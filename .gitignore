@@ -35,3 +35,8 @@ __pycache__/
 
 # HuggingFace cache
 .cache/
+
+# CodeWhale/WSL agent junctions (never commit)
+.agents/
+.codewhale/
+
