@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import UniformTypeIdentifiers
 import AVFoundation
 import PhotosUI
 
@@ -210,9 +211,9 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 return
             }
             
-            provider.loadObject(ofClass: UIImage.self) { image, _ in
+            provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { item, _ in
                 DispatchQueue.main.async {
-                    Task { @MainActor in self.parent.selectedImage = image } as? UIImage
+                    self.parent.selectedImage = item as? UIImage
                     self.parent.dismiss()
                 }
             }
