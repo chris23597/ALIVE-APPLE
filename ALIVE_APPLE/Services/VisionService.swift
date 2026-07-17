@@ -213,7 +213,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
             
             provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { item, _ in
                 DispatchQueue.main.async {
-                    self.parent.selectedImage = item as? UIImage
+                    let img = item
+                    self.parent.selectedImage = img as? UIImage
                     self.parent.dismiss()
                 }
             }
