@@ -43,7 +43,7 @@ actor ModelManager {
                 unloadVisionModel()
                 try await Task.sleep(for: .seconds(0.5))
             }
-            guard neededGB <= maxMemoryBudgetGB else { return
+            guard neededGB <= maxMemoryBudgetGB else {
                 throw ModelError.insufficientMemory(needed: neededGB, available: maxMemoryBudgetGB)
             }
         }

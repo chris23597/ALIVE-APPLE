@@ -1,10 +1,12 @@
 import Foundation
+import Observation
 
 /// Shared service container — all ViewModels share the same service instances.
 /// This matches the architecture doc: "Service Actors (global actors)."
 /// Without this, each ViewModel creates its own ModelManager/AutoRouter/etc,
 /// causing models loaded in one tab to be invisible to another.
 @MainActor
+@Observable
 final class ServiceContainer {
     let inferenceEngine = InferenceEngine()
     let modelManager = ModelManager()
