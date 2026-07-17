@@ -112,7 +112,7 @@ final class ModelViewModel {
             try await services.usbImportService.importAll(
                 models: models,
                 modelManager: services.modelManager
-            ) { progress in
+            ) { @Sendable progress in
                 Task { @MainActor in
                     self.importProgress = progress
                 }

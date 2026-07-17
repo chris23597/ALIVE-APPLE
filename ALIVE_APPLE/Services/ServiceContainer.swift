@@ -7,7 +7,7 @@ import Observation
 /// causing models loaded in one tab to be invisible to another.
 @MainActor
 @Observable
-final class ServiceContainer {
+@preconcurrency @MainActor @Observable final class ServiceContainer {
     let inferenceEngine = InferenceEngine()
     let modelManager = ModelManager()
     let autoRouter = AutoRouter()
