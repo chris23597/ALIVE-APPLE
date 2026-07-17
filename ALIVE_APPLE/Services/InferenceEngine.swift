@@ -107,19 +107,13 @@ actor InferenceEngine {
                         continuation.yield("⚠️ **Context limit approaching.** Older messages were trimmed to fit the model's context window.\n\n")
                     }
                     
-                    // 4. Run inference with timeout
+                    // Build demo tokens on the actor; stream them inside timeout (@Sendable-safe)
+                    // Real llama.cpp path: sample/yield inside the timeout loop instead.
+                    let simulatedTokens = self.generateSimulatedTokens(
+                        prompt: prompt,
+                        modelName: model.name
+                    )
                     try await withTimeout(seconds: inferenceTimeoutSeconds) {
-                        // Real implementation:
-                        // 1. tokenize prompt: llama_tokenize(ctx, prompt, tokens, n_tokens, true, false)
-                        // 2. for each token: llama_eval(ctx, &token, 1, n_past, n_threads)
-                        // 3. sample: llama_sample_top_p_top_k(ctx, NULL, ...)
-                        // 4. yield each decoded token
-                        
-                        let simulatedTokens = self.generateSimulatedTokens(
-                            prompt: prompt,
-                            modelName: model.name
-                        )
-                        
                         for token in simulatedTokens {
                             try Task.checkCancellation()
                             continuation.yield(token)
@@ -179,13 +173,12 @@ actor InferenceEngine {
                         continuation.yield("⚠️ Image is large. Reducing quality to fit context window.\n\n")
                     }
                     
-                    // 4. Run with timeout (VLM is slower)
+                    // Build demo tokens on the actor; stream inside timeout (@Sendable-safe)
+                    let visionTokens = self.generateSimulatedVisionTokens(
+                        prompt: prompt,
+                        modelName: model.name
+                    )
                     try await withTimeout(seconds: 60) {
-                        let visionTokens = self.generateSimulatedVisionTokens(
-                            prompt: prompt,
-                            modelName: model.name
-                        )
-                        
                         for token in visionTokens {
                             try Task.checkCancellation()
                             continuation.yield(token)
@@ -334,13 +327,14 @@ actor InferenceEngine {
     // REAL swap: after llama_eval/sample loop, yield decoded strings here.
     // Keep buildPrompt() (ChatML + AliveSystemPrompt) unchanged for both demo and real.
     
-    private func generateSimulatedTokens(prompt: String, modelName: String) -> [String] {
+    // nonisolated: pure string helpers; safe from @Sendable timeout closures / Tasks
+    nonisolated private func generateSimulatedTokens(prompt: String, modelName: String) -> [String] {
         let userText = extractLastUserContent(from: prompt)
         let response = demoOnDeviceReply(userText: userText, modelName: modelName)
         return tokenizeForStream(response)
     }
     
-    private func extractLastUserContent(from prompt: String) -> String {
+    nonisolated private func extractLastUserContent(from prompt: String) -> String {
         if let range = prompt.range(of: "<|im_start|>user\n", options: .backwards) {
             let after = prompt[range.upperBound...]
             if let end = after.range(of: "<|im_end|>") {
@@ -351,7 +345,7 @@ actor InferenceEngine {
         return String(prompt.suffix(400))
     }
     
-    private func demoOnDeviceReply(userText: String, modelName: String) -> String {
+    nonisolated private func demoOnDeviceReply(userText: String, modelName: String) -> String {
         let q = userText.lowercased()
         let banner = "_(Fast · \(modelName) · on-device demo until llama.cpp is linked on Mac)_\n\n"
         
@@ -398,7 +392,7 @@ actor InferenceEngine {
         """
     }
     
-    private func tokenizeForStream(_ text: String) -> [String] {
+    nonisolated private func tokenizeForStream(_ text: String) -> [String] {
         var parts: [String] = []
         var current = ""
         for ch in text {
@@ -412,7 +406,7 @@ actor InferenceEngine {
         return parts.isEmpty ? [text] : parts
     }
     
-    private func generateSimulatedVisionTokens(prompt: String, modelName: String) -> [String] {
+    nonisolated private func generateSimulatedVisionTokens(prompt: String, modelName: String) -> [String] {
         let banner = "_(Vision demo · \(modelName) · until real VLM is linked)_\n\n"
         let response: String
         if prompt.lowercased().contains("plant") || prompt.lowercased().contains("identify") {
