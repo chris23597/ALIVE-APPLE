@@ -3,7 +3,7 @@ import SwiftData
 
 /// A single chat message in a conversation
 @Model
-final class ChatMessage: Identifiable {
+final class ChatMessage: Identifiable, Codable {
     @Attribute(.unique) var id: UUID
     var role: MessageRole
     var content: String
@@ -82,7 +82,7 @@ final class ChatMessage: Identifiable {
 
 /// A conversation thread
 @Model
-final class Conversation: Identifiable {
+final class Conversation: Identifiable, Codable {
     @Attribute(.unique) var id: UUID
     var title: String
     var createdAt: Date
