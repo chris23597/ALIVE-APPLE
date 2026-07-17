@@ -153,7 +153,7 @@ struct SettingsView: View {
             Section("About") {
                 LabeledContent("Version", value: "1.0.0")
                 LabeledContent("Target", value: "iPhone 16 (A18, 8GB)")
-                LabeledContent("Engine", value: "llama.cpp + MLX + CoreML")
+                LabeledContent("Engine", value: "llama.cpp + BM25 RAG (no CoreML required)")
                 
                 Link(destination: URL(string: "https://aliveapple.com/privacy")!) {
                     Label("Privacy Policy", systemImage: "hand.raised.fill")
