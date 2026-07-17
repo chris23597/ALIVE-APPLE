@@ -18,10 +18,8 @@ actor AutoRouter {
     // MARK: - Lifecycle
     
     init() {
-        startNetworkMonitoring()
     }
     
-    private func startNetworkMonitoring() {
         networkMonitor.pathUpdateHandler = { [weak self] path in
             Task { [weak self] in
                 await self?.updateConnectivity(path.status == .satisfied)

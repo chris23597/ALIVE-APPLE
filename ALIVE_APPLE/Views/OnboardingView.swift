@@ -285,7 +285,7 @@ struct OnboardingView: View {
                     systemImage: "message.fill",
                     color: .green
                 ) {
-                    skipToReady()
+                    // skipToReady() — TODO: implement
                 }
             }
             .padding(.bottom, 40)

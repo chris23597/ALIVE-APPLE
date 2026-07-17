@@ -115,7 +115,7 @@ actor InferenceEngine {
                         // 3. sample: llama_sample_top_p_top_k(ctx, NULL, ...)
                         // 4. yield each decoded token
                         
-                        let simulatedTokens = generateSimulatedTokens(
+                        let simulatedTokens = self.generateSimulatedTokens(
                             prompt: prompt,
                             modelName: model.name
                         )
@@ -181,7 +181,7 @@ actor InferenceEngine {
                     
                     // 4. Run with timeout (VLM is slower)
                     try await withTimeout(seconds: 60) {
-                        let visionTokens = generateSimulatedVisionTokens(
+                        let visionTokens = self.generateSimulatedVisionTokens(
                             prompt: prompt,
                             modelName: model.name
                         )
@@ -334,7 +334,7 @@ actor InferenceEngine {
     // REAL swap: after llama_eval/sample loop, yield decoded strings here.
     // Keep buildPrompt() (ChatML + AliveSystemPrompt) unchanged for both demo and real.
     
-    private func generateSimulatedTokens(prompt: String, modelName: String) -> [String] {
+    private func self.generateSimulatedTokens(prompt: String, modelName: String) -> [String] {
         let userText = extractLastUserContent(from: prompt)
         let response = demoOnDeviceReply(userText: userText, modelName: modelName)
         return tokenizeForStream(response)
@@ -412,7 +412,7 @@ actor InferenceEngine {
         return parts.isEmpty ? [text] : parts
     }
     
-    private func generateSimulatedVisionTokens(prompt: String, modelName: String) -> [String] {
+    private func self.generateSimulatedVisionTokens(prompt: String, modelName: String) -> [String] {
         let banner = "_(Vision demo · \(modelName) · until real VLM is linked)_\n\n"
         let response: String
         if prompt.lowercased().contains("plant") || prompt.lowercased().contains("identify") {
