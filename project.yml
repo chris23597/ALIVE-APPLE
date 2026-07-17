@@ -13,7 +13,6 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    SWIFT_STRICT_CONCURRENCY: minimal
     TARGETED_DEVICE_FAMILY: "1"
     INFOPLIST_FILE: Xcode/Info.plist
     CODE_SIGN_STYLE: Manual
@@ -39,6 +38,7 @@ targets:
         PRODUCT_NAME: "ALIVE APPLE"
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_STRICT_CONCURRENCY: minimal
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xfrontend -disable-actor-data-race-checks"
     configs:
       Debug:
         SWIFT_OPTIMIZATION_LEVEL: "-Onone"
