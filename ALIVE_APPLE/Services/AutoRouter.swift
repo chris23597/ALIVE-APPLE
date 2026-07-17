@@ -18,8 +18,6 @@ actor AutoRouter {
     // MARK: - Lifecycle
     
     init() {
-    }
-    
         networkMonitor.pathUpdateHandler = { [weak self] path in
             Task { [weak self] in
                 await self?.updateConnectivity(path.status == .satisfied)
