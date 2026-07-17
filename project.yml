@@ -1,0 +1,45 @@
+name: ALIVE APPLE
+options:
+  bundleIdPrefix: com.aliveapple
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "17.0"
+  generateEmptyDirectories: true
+  developmentLanguage: en
+  usesTabs: false
+  tabWidth: 4
+  indentWidth: 4
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    INFOPLIST_FILE: Xcode/Info.plist
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+targets:
+  ALIVE APPLE:
+    type: application
+    platform: iOS
+    sources:
+      - path: ALIVE_APPLE
+        type: group
+      - path: Xcode
+        type: group
+        includes:
+          - "Assets.xcassets"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aliveapple.ios
+        PRODUCT_NAME: "ALIVE APPLE"
+        GENERATE_INFOPLIST_FILE: NO
+    configs:
+      Debug:
+        SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+        SWIFT_COMPILATION_MODE: incremental
+      Release:
+        SWIFT_OPTIMIZATION_LEVEL: "-Osize"

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALIVE APPLE — Setup Dashboard</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --card: #141420;
+  --border: #1e1e30;
+  --text: #e0e0e8;
+  --muted: #6b6b80;
+  --green: #4caf50;
+  --orange: #ff9800;
+  --blue: #2196f3;
+  --red: #f44336;
+  --accent: #7c4dff;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+.container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+
+.header {
+  text-align: center;
+  padding: 40px 0 30px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 30px;
+}
+.header h1 {
+  font-size: 2.2em;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--green), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.header .subtitle {
+  color: var(--muted);
+  font-size: 1.05em;
+  margin-top: 8px;
+}
+
+.cards { display: flex; flex-direction: column; gap: 16px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  transition: border-color 0.2s;
+}
+.card:hover { border-color: var(--accent); }
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.card-header .icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+}
+.icon.green { background: rgba(76,175,80,0.15); color: var(--green); }
+.icon.orange { background: rgba(255,152,0,0.15); color: var(--orange); }
+.icon.blue { background: rgba(33,150,243,0.15); color: var(--blue); }
+.icon.red { background: rgba(244,67,54,0.15); color: var(--red); }
+.icon.purple { background: rgba(124,77,255,0.15); color: var(--accent); }
+
+.card-header h3 { font-size: 1.1em; }
+.card-header .badge {
+  font-size: 0.75em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+  margin-left: auto;
+}
+.badge.ok { background: rgba(76,175,80,0.2); color: var(--green); }
+.badge.warn { background: rgba(255,152,0,0.2); color: var(--orange); }
+.badge.missing { background: rgba(244,67,54,0.2); color: var(--red); }
+
+.model-list { display: flex; flex-direction: column; gap: 8px; }
+.model-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  font-size: 0.92em;
+}
+.model-row .name { flex: 1; }
+.model-row .size { color: var(--muted); margin-right: 12px; }
+.model-row .status {
+  font-weight: 600;
+  font-size: 0.82em;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.status.ok { color: var(--green); background: rgba(76,175,80,0.12); }
+.status.missing { color: var(--red); background: rgba(244,67,54,0.12); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  color: white;
+}
+.btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.btn.primary { background: var(--accent); }
+.btn.green { background: var(--green); }
+.btn.blue { background: var(--blue); }
+.btn.outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+.steps { counter-reset: step; list-style: none; }
+.steps li {
+  counter-increment: step;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  font-size: 0.95em;
+}
+.steps li::before {
+  content: counter(step);
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+.steps li.done::before { background: var(--green); content: '\2713'; }
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--card);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 0.9em;
+}
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.status-dot.orange { background: var(--orange); box-shadow: 0 0 8px var(--orange); }
+
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85em;
+  padding: 30px 0 20px;
+  border-top: 1px solid var(--border);
+  margin-top: 30px;
+}
+.spinner {
+  display: inline-block;
+  width: 18px; height: 18px;
+  border: 2px solid transparent;
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>ALIVE APPLE</h1>
+    <p class="subtitle">iPhone 16 &bull; On-Device AI &bull; Setup Dashboard</p>
+  </div>
+
+  <!-- Overall Status -->
+  <div id="overallStatus" class="status-bar" style="margin-bottom:20px">
+    <div class="status-dot orange" id="overallDot"></div>
+    <span id="overallText">Checking flash drive status...</span>
+  </div>
+
+  <!-- Model Status Card -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-header">
+        <div class="icon blue">&#128190;</div>
+        <h3>AI Models on Flash Drive</h3>
+        <span class="badge" id="modelBadge">checking...</span>
+      </div>
+      <div class="model-list" id="modelList">
+        <div class="model-row"><span class="name">Loading model status...</span></div>
+      </div>
+      <div class="btn-group">
+        <button class="btn primary" onclick="runScript('scripts/first-run.ps1')" id="btnSetup">
+          &#9889; Run Full Setup
+        </button>
+        <button class="btn outline" onclick="runScript('scripts/check-models.ps1')">
+          &#128260; Refresh Status
+        </button>
+        <button class="btn outline" onclick="openFolder('models')">
+          &#128193; Open Models Folder
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Guide -->
+    <div class="card">
+      <div class="card-header">
+        <div class="icon purple">&#128640;</div>
+        <h3>Next Steps — 100% FREE</h3>
+      </div>
+      <ol class="steps">
+        <li id="step1">Push code to GitHub (free) — GitHub builds the app automatically</li>
+        <li id="step2">Download ALIVE_APPLE.ipa from GitHub Actions Artifacts</li>
+        <li id="step3">Install AltStore on iPhone 16 (free, from altstore.io)</li>
+        <li id="step4">Sideload the IPA via AltStore — app appears on home screen</li>
+        <li id="step5">Plug in this flash drive — Import models — Start chatting!</li>
+      </ol>
+      <div class="btn-group">
+        <button class="btn green" onclick="openFile('INSTALL_GUIDE.md')">
+          &#128214; Full Install Guide
+        </button>
+        <button class="btn outline" onclick="window.open('https://altstore.io')">
+          AltStore (Free)
+        </button>
+      </div>
+    </div>
+
+    <!-- Documents -->
+    <div class="card">
+      <div class="card-header">
+        <div class="icon green">&#128214;</div>
+        <h3>Documentation</h3>
+      </div>
+      <div class="btn-group">
+        <button class="btn outline" onclick="openFile('README.md')">README</button>
+        <button class="btn outline" onclick="openFile('BUILD_GUIDE.md')">Build Guide</button>
+        <button class="btn outline" onclick="openFile('MODEL_INVENTORY.md')">Model Inventory</button>
+        <button class="btn outline" onclick="openFile('USB_SETUP.md')">USB Setup</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    ALIVE APPLE v1.0 &bull; iPhone 16 (A18, 8GB) &bull; All inference on-device &bull; No cloud required
+  </div>
+</div>
+
+<script>
+// Status data is embedded by check-models.ps1
+var MODEL_STATUS = [];
+
+function setStatus(ready, text) {
+  var dot = document.getElementById('overallDot');
+  var txt = document.getElementById('overallText');
+  dot.className = 'status-dot ' + (ready ? 'green' : 'orange');
+  txt.textContent = text;
+}
+
+function renderModels() {
+  var list = document.getElementById('modelList');
+  var badge = document.getElementById('modelBadge');
+  if (!MODEL_STATUS || MODEL_STATUS.length === 0) {
+    list.innerHTML = '<div class="model-row"><span class="name">No status data. Click "Refresh Status".</span></div>';
+    badge.textContent = 'unknown';
+    badge.className = 'badge warn';
+    return;
+  }
+  
+  var html = '';
+  var ok = 0, missing = 0;
+  MODEL_STATUS.forEach(function(m) {
+    var cls = m.ok ? 'ok' : 'missing';
+    var st = m.ok ? 'READY' : 'MISSING';
+    if (m.ok) ok++; else missing++;
+    html += '<div class="model-row">' +
+      '<span class="name">' + (m.label || m.file) + '</span>' +
+      '<span class="size">' + (m.size || '') + '</span>' +
+      '<span class="status ' + cls + '">' + st + '</span>' +
+      '</div>';
+  });
+  list.innerHTML = html;
+  
+  if (missing === 0) {
+    badge.textContent = ok + ' models ready';
+    badge.className = 'badge ok';
+    setStatus(true, 'All models ready! Flash drive is prepared for iPhone 16.');
+    document.getElementById('btnSetup').textContent = '\u2705 Already Set Up';
+  } else {
+    badge.textContent = ok + '/' + MODEL_STATUS.length + ' ready';
+    badge.className = ok > 0 ? 'badge warn' : 'badge missing';
+    setStatus(false, missing + ' model(s) missing. Run Full Setup to download.');
+  }
+}
+
+function runScript(path) {
+  var full = window.location.href.replace('dashboard.html', '') + path;
+  try {
+    var shell = new ActiveXObject('WScript.Shell');
+    shell.Run('powershell -ExecutionPolicy Bypass -File "' + full + '"', 1, false);
+  } catch(e) {
+    window.open(full.replace(/\//g, '\\'));
+  }
+}
+
+function openFolder(path) {
+  var full = window.location.href.replace('dashboard.html', '') + path;
+  window.open(full.replace(/\//g, '\\'));
+}
+
+function openFile(path) {
+  var full = window.location.href.replace('dashboard.html', '') + path;
+  window.open(full.replace(/\//g, '\\'));
+}
+
+// Try to load status from embedded data or localStorage
+window.onload = function() {
+  if (MODEL_STATUS.length > 0) {
+    renderModels();
+  } else {
+    // Show placeholder
+    setStatus(false, 'Click "Refresh Status" to check models.');
+    document.getElementById('modelBadge').textContent = 'unknown';
+    document.getElementById('modelBadge').className = 'badge warn';
+  }
+};
+
+// Listen for status updates posted from PowerShell
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'modelStatus') {
+    MODEL_STATUS = e.data.models;
+    renderModels();
+  }
+});
+</script>
+</body>
+</html>

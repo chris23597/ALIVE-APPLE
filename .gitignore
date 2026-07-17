@@ -1,0 +1,37 @@
+# ALIVE APPLE - gitignore
+
+# Xcode
+*.xcworkspace
+xcuserdata/
+DerivedData/
+*.xcuserstate
+*.xcbkptlist
+
+# Build
+build/
+*.xcarchive
+*.ipa
+Payload/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Generated (XcodeGen output - committed as reference but regenerated)
+ALIVE APPLE.xcodeproj/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# HuggingFace cache
+.cache/

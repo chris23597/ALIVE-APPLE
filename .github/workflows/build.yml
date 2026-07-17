@@ -1,0 +1,89 @@
+name: Build ALIVE APPLE for iPhone 16
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual build'
+        required: false
+        default: 'Testing'
+
+jobs:
+  build:
+    name: Build IPA (FREE — macOS runner)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate --spec project.yml
+          ls -la *.xcodeproj
+
+      - name: Build archive (unsigned)
+        run: |
+          xcodebuild \
+            -project "ALIVE APPLE.xcodeproj" \
+            -scheme "ALIVE APPLE" \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath ./build/output.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            2>&1 | tail -20
+
+      - name: Package as IPA
+        run: |
+          APP_PATH="./build/output.xcarchive/Products/Applications"
+          echo "App bundle at:"
+          ls -la "$APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH"/*.app ./Payload/ 2>/dev/null || cp -R "$APP_PATH"/* ./Payload/
+          zip -r ALIVE_APPLE.ipa Payload
+          rm -rf Payload
+          ls -lh ALIVE_APPLE.ipa
+          echo "IPA_SIZE=$(stat -f%z ALIVE_APPLE.ipa)" >> $GITHUB_ENV
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ALIVE_APPLE_iPhone16
+          path: ALIVE_APPLE.ipa
+          retention-days: 90
+
+      - name: Build Summary
+        run: |
+          echo "========================================="
+          echo "  ALIVE APPLE — Build Complete!"
+          echo "========================================="
+          echo ""
+          echo "  Download the IPA from the Artifacts section above."
+          echo "  Then sideload to iPhone 16 using AltStore (free)."
+          echo ""
+          echo "  Steps on your Windows PC:"
+          echo "  1. Download ALIVE_APPLE.ipa from Artifacts"
+          echo "  2. Install AltServer on Windows: https://altstore.io"
+          echo "  3. Plug iPhone into PC via USB"
+          echo "  4. Open AltServer -> Install AltStore to iPhone"
+          echo "  5. On iPhone: open AltStore -> My Apps -> + -> ALIVE_APPLE.ipa"
+          echo "  6. Sign in with your Apple ID (free)"
+          echo "  7. App installs on your home screen"
+          echo "  8. Plug in flash drive -> Import models -> Start chatting!"
+          echo ""

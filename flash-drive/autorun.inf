@@ -1,0 +1,5 @@
+[AutoRun]
+open=START-HERE.bat
+icon=ALIVE_APPLE.ico,0
+label=ALIVE APPLE — iPhone 16 AI Setup
+action=Open ALIVE APPLE Setup
