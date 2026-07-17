@@ -229,7 +229,7 @@ actor InferenceEngine {
     /// Run an async operation with a hard timeout.
     /// Uses withTaskCancellationHandler so the cancelled operation task
     /// doesn't race with the timeout and cause spurious errors.
-    private func withTimeout(seconds: Double, operation: @escaping () async throws -> Void) async throws {
+    private nonisolated func withTimeout(seconds: Double, operation: @escaping () async throws -> Void) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             // Main operation — respects cancellation
             group.addTask {
