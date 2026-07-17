@@ -46,9 +46,6 @@ actor ModelManager {
             guard neededGB <= maxMemoryBudgetGB else {
                 throw ModelError.insufficientMemory(needed: neededGB, available: maxMemoryBudgetGB)
             }
-            guard neededGB <= maxMemoryBudgetGB else {
-                throw ModelError.insufficientMemory(needed: neededGB, available: maxMemoryBudgetGB)
-            }
         }
         
         // Unload current text model
