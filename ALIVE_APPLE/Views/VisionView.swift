@@ -74,7 +74,7 @@ struct VisionView: View {
                                 .foregroundColor(.secondary)
                             Text("Fast VLM scanning the image")
                                 .font(.caption2)
-                                .foregroundColor(.tertiary)
+                                .foregroundColor(Color.secondary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -211,7 +211,7 @@ struct VisionView: View {
             if !isSmokeLoading {
                 Text("⚡ Fast VLM — ready in ~2-4s")
                     .font(.caption2)
-                    .foregroundColor(.tertiary)
+                    .foregroundColor(Color.secondary)
             }
         }
     }
@@ -275,7 +275,7 @@ struct VisionView: View {
             
             Text("⏱ Timeout at 45s · using \(smokeTier == .fast ? "Moderate" : "Fast") VLM")
                 .font(.caption2)
-                .foregroundColor(.tertiary)
+                .foregroundColor(Color.secondary)
         }
         .padding(12)
         .background(Color.orange.opacity(0.05))

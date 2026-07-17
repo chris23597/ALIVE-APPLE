@@ -28,20 +28,18 @@ actor VoiceService {
     
     // MARK: - Speech-to-Text
     
-    /// Start listening and stream transcriptions
-    /// Thread-safe: guards against double-finish on continuation from recognitionTask callback
+    /// Start listening and stream transcriptions.
+    /// Uses a Sendable-safe atomic flag to prevent double-finish.
     func startListening() -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            // Use a lock to prevent double-finish (e.g. error + final result arriving together)
-            let finished = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
-            finished.initialize(to: false)
-            let lock = NSLock()
+            // Sendable-safe finished flag using NSLock + class wrapper
+            let state = FinishedState()
             
             func safeFinish(throwing error: Error? = nil) {
-                lock.lock()
-                defer { lock.unlock() }
-                guard !finished.pointee else { return }
-                finished.pointee = true
+                state.lock.lock()
+                defer { state.lock.unlock() }
+                guard !state.finished else { return }
+                state.finished = true
                 if let error {
                     continuation.finish(throwing: error)
                 } else {
@@ -50,10 +48,9 @@ actor VoiceService {
             }
             
             continuation.onTermination = { @Sendable _ in
-                lock.lock()
-                finished.pointee = true
-                lock.unlock()
-                Task { await self.stopListening() }
+                state.lock.lock()
+                state.finished = true
+                state.lock.unlock()
             }
             
             do {
@@ -135,7 +132,6 @@ actor VoiceService {
     
     // MARK: - Voice Activity Detection
     
-    /// Simple energy-based VAD
     func detectSpeechActivity(audioBuffer: [Float]) -> Bool {
         let rms = sqrt(audioBuffer.reduce(0) { $0 + $1 * $1 } / Float(audioBuffer.count))
         return rms > 0.02
@@ -143,7 +139,6 @@ actor VoiceService {
     
     // MARK: - Streaming TTS
     
-    /// Speak tokens incrementally as they arrive from inference
     func speakStream(_ stream: AsyncStream<String>) async {
         var buffer = ""
         var lastSpeakTime = Date()
@@ -166,6 +161,13 @@ actor VoiceService {
             speak(buffer)
         }
     }
+}
+
+// MARK: - Sendable-safe state for recognition callbacks
+
+final class FinishedState: @unchecked Sendable {
+    var finished = false
+    let lock = NSLock()
 }
 
 // MARK: - Errors

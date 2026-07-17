@@ -78,7 +78,7 @@ struct OnboardingView: View {
                     .foregroundColor(.secondary)
                 Text("All processing stays on your device.\nNo cloud required. No data leaves.")
                     .font(.subheadline)
-                    .foregroundColor(.tertiary)
+                    .foregroundColor(Color.secondary)
                     .multilineTextAlignment(.center)
             }
             
