@@ -37,13 +37,13 @@ actor ModelManager {
         let neededGB = Float(config.fileSizeBytes) / 1e9
         let visionGB = loadedVisionModel.map { Float($0.fileSizeBytes) / 1e9 } ?? 0
         
-        guard neededGB + visionGB <= maxMemoryBudgetGB else {
+        if neededGB + visionGB > maxMemoryBudgetGB {
             // Try unloading vision first
             if loadedVisionModel != nil {
                 unloadVisionModel()
                 try await Task.sleep(for: .seconds(0.5))
             }
-            guard neededGB <= maxMemoryBudgetGB else {
+            if neededGB > maxMemoryBudgetGB {
                 throw ModelError.insufficientMemory(needed: neededGB, available: maxMemoryBudgetGB)
             }
         }

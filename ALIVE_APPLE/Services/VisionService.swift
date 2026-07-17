@@ -212,7 +212,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             
             provider.loadObject(ofClass: UIImage.self) { image, _ in
                 DispatchQueue.main.async {
-                    self.parent.selectedImage = image as? UIImage
+                    Task { @MainActor in self.parent.selectedImage = image } as? UIImage
                     self.parent.dismiss()
                 }
             }
