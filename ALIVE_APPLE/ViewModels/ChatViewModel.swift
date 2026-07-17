@@ -114,15 +114,15 @@ final class ChatViewModel {
                         model: model
                     )
                 } else {
-                    stream = await services.inferenceEngine.generate(
-                        messages: inferenceMessages,
+                    let msgs = messages; stream = await services.inferenceEngine.generate(
+                        messages: msgs,
                         model: model
                     )
                 }
                 
             case .pro:
-                stream = await services.grokService.send(
-                    messages: messages,
+                let gmsgs = messages; stream = await services.grokService.send(
+                    messages: gmsgs,
                     stream: true
                 )
                 
