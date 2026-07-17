@@ -38,6 +38,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.aliveapple.ios
         PRODUCT_NAME: "ALIVE APPLE"
         GENERATE_INFOPLIST_FILE: NO
+        SWIFT_STRICT_CONCURRENCY: minimal
     configs:
       Debug:
         SWIFT_OPTIMIZATION_LEVEL: "-Onone"
