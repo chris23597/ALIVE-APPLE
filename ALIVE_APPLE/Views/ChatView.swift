@@ -323,7 +323,11 @@ struct ChatView: View {
     }
     
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let lastId = chatVM.messages.last?.id ?? (chatVM.isGenerating ? "streaming" : nil) {
+        if chatVM.isGenerating {
+            withAnimation {
+                proxy.scrollTo("streaming", anchor: .bottom)
+            }
+        } else if let lastId = chatVM.messages.last?.id {
             withAnimation {
                 proxy.scrollTo(lastId, anchor: .bottom)
             }

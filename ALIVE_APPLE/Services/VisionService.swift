@@ -85,7 +85,7 @@ actor VisionService {
         
         // 3. Run inference
         var fullResponse = ""
-        let stream = engine.generateVision(
+        let stream = await engine.generateVision(
             image: processedImage,
             prompt: prompt,
             model: model

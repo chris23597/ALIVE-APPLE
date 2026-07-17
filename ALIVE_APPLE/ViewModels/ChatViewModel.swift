@@ -108,20 +108,20 @@ final class ChatViewModel {
                 
                 // If there's an image, use vision pipeline
                 if let imageData = image {
-                    stream = services.inferenceEngine.generateVision(
+                    stream = await services.inferenceEngine.generateVision(
                         image: imageData,
                         prompt: finalPrompt,
                         model: model
                     )
                 } else {
-                    stream = services.inferenceEngine.generate(
+                    stream = await services.inferenceEngine.generate(
                         messages: inferenceMessages,
                         model: model
                     )
                 }
                 
             case .pro:
-                stream = services.grokService.send(
+                stream = await services.grokService.send(
                     messages: messages,
                     stream: true
                 )

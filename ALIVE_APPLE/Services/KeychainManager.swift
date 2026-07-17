@@ -145,7 +145,7 @@ actor GrokAPIService {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    let apiKey = try keychain.readKey()
+                    let apiKey = try await keychain.readKey()
                     
                     var request = URLRequest(url: URL(string: "https://api.x.ai/v1/chat/completions")!)
                     request.httpMethod = "POST"

@@ -53,7 +53,7 @@ final class MemoryMonitor {
             }
             
             if result == KERN_SUCCESS {
-                let pageSize = UInt64(vm_kernel_page_size)  // nonisolated(unsafe) is OK here — read-only system value
+                let pageSize = UInt64(vm_page_size)
                 let freePages = hostInfo.free_count + hostInfo.inactive_count + hostInfo.purgeable_count
                 freeMemoryGB = Float(UInt64(freePages) * pageSize) / 1_000_000_000.0
                 usedMemoryGB = max(0, totalMemoryGB - freeMemoryGB)

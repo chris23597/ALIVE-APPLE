@@ -265,7 +265,7 @@ struct OnboardingView: View {
                         .foregroundColor(.secondary)
                 }
             } else {
-                Button(action: skipToReady) {
+                Button(action: {}) {
                     Label("I'll do this now — scan available", systemImage: "magnifyingglass")
                         .font(.callout)
                 }
@@ -285,7 +285,7 @@ struct OnboardingView: View {
                     systemImage: "message.fill",
                     color: .green
                 ) {
-                    // skipToReady() — TODO: implement
+                    
                 }
             }
             .padding(.bottom, 40)
