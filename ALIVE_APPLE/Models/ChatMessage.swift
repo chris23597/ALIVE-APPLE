@@ -3,7 +3,7 @@ import SwiftData
 
 /// A single chat message in a conversation
 @Model
-final class ChatMessage: Identifiable, Codable {
+final class ChatMessage: Identifiable, Codable, @unchecked Sendable {
     @Attribute(.unique) var id: UUID
     var role: MessageRole
     var content: String
