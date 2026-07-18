@@ -85,7 +85,8 @@ actor ModelManager {
             tier: config.tier,
             contextSize: config.contextSize,
             isLoaded: true,
-            loadTimeSeconds: elapsed
+            loadTimeSeconds: elapsed,
+            mmprojFileName: config.mmprojFileName
         )
         loadedTextModel = config
         
@@ -141,7 +142,8 @@ actor ModelManager {
             tier: config.tier,
             contextSize: config.contextSize,
             isLoaded: true,
-            loadTimeSeconds: elapsed
+            loadTimeSeconds: elapsed,
+            mmprojFileName: config.mmprojFileName
         )
         loadedVisionModel = config
         
@@ -224,7 +226,8 @@ actor ModelManager {
                         tier: template.tier,
                         contextSize: template.contextSize,
                         isLoaded: isModelLoaded(template.id),
-                        loadTimeSeconds: nil
+                        loadTimeSeconds: nil,
+                        mmprojFileName: template.mmprojFileName
                     )
                 }
                 discovered.append(config)

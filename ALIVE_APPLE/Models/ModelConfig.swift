@@ -13,7 +13,7 @@ struct ModelConfig: Identifiable, Codable, Hashable {
     let contextSize: Int
     let isLoaded: Bool
     let loadTimeSeconds: Double?
-    let mmprojFileName: String? = nil  // Multimodal projector file for vision models (nil for text-only)
+    var mmprojFileName: String? = nil  // Multimodal projector file for vision models (nil for text-only)
     
     enum ModelType: String, Codable {
         case text          // Pure text LLM

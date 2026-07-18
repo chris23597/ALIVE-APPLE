@@ -339,6 +339,7 @@ actor InferenceEngine {
     
     /// Real vision generation: llama_encode image → llama_decode text.
     /// Works with combined GGUF models that include the vision encoder.
+    /// Full image tensor injection is deferred to F9 (UIImage → RGB float32 → batch.embd).
     private func generateVisionReal(
         image: Data,
         prompt: String,
@@ -346,20 +347,11 @@ actor InferenceEngine {
         model: OpaquePointer,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
-        let vocab = llama_model_get_vocab(model)
-        
-        // 1. Encode image through vision encoder
-        //    The llama_encode() call processes image tokens placed in the batch.
-        //    For combined GGUF models, the encoder tokenizes the image internally.
-        let imageTokens: [llama_token] = [llama_token](repeating: 0, count: 1)
+        // Encode a minimal batch through the vision encoder.
+        // Full path (F9): resize image → RGB float32 tensor → fill imgBatch.embd
         var imgBatch = llama_batch_init(1, 0, 1)
-        defer { llama_batch_free(imgBatch) }
         imgBatch.n_tokens = 1
-        // Placeholder — real implementation fills embedding data from preprocessed image
-        // For now, this sends a minimal batch through the encoder
-        if let embd = imgBatch.embd {
-            // Zero-fill as placeholder
-        }
+        defer { llama_batch_free(imgBatch) }
         
         guard llama_encode(context, imgBatch) == 0 else {
             // Encoder failed — fall back to text-only
