@@ -15,33 +15,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # NOTE: Do not use case-sensitive `grep ios` — SDK lines say "iOS" / "iphoneos".
-      # A failing grep exits 1 under bash -e and aborts the job before the real build.
-      - name: Select Xcode and show versions
+      # Official GHA images ship Xcode as Xcode_*.app (not always Xcode.app).
+      # This action picks a concrete version and sets DEVELOPER_DIR.
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # NOTE: Never `grep ios` (case-sensitive) under bash -e — SDK lines say iOS/iphoneos.
+      - name: Show Xcode / SDK versions
         run: |
           set -uo pipefail
           echo "=== /Applications Xcode apps ==="
           ls -d /Applications/Xcode*.app 2>/dev/null || ls /Applications | head -40
-
-          SELECTED=""
-          if [ -d /Applications/Xcode.app/Contents/Developer ]; then
-            SELECTED=/Applications/Xcode.app/Contents/Developer
-          else
-            # Prefer highest versioned Xcode_*.app on the runner image
-            CAND=$(ls -d /Applications/Xcode_*.app/Contents/Developer 2>/dev/null | sort -V | tail -1 || true)
-            if [ -n "$CAND" ]; then
-              SELECTED="$CAND"
-            fi
-          fi
-
-          if [ -n "$SELECTED" ]; then
-            echo "Selecting: $SELECTED"
-            sudo xcode-select -s "$SELECTED"
-          else
-            echo "WARN: no Xcode.app tree found; using current xcode-select path"
-          fi
-
-          echo "DEVELOPER_DIR=$(xcode-select -p)"
+          echo "DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p)}"
+          echo "xcode-select -p => $(xcode-select -p)"
           xcodebuild -version
           swift --version
           echo "=== iOS SDKs ==="
@@ -105,6 +93,17 @@ jobs:
           # Surface compile errors clearly
           grep -E 'error:|fatal error:|BUILD FAILED' /tmp/xcodebuild-archive.log | tail -40 || true
           exit $XC
+
+      - name: Upload xcodebuild log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-archive-log
+          path: |
+            /tmp/xcodebuild-archive.log
+            /tmp/spm-resolve.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Debug archive structure
         if: success()
