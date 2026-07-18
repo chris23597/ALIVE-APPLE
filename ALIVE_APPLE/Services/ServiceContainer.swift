@@ -18,23 +18,21 @@ final class ServiceContainer {
     var isLoading: Bool = false
     
     /// Load the Fast tier text model (Phi-4 Mini).
-    /// Enforces memory and thermal gates before loading.
     func ensureTextModelLoaded() async throws -> ModelConfig {
         guard let config = RoutingTier.fast.textModel else {
             throw ModelError.noModelForTier(.fast)
         }
         
-        // Memory gate
         guard memoryMonitor.currentPressure != .critical else {
             throw ModelError.insufficientMemory(needed: 3.0, available: 0)
         }
         
-        if loadedModel?.id == config.id, inferenceEngine.isLoaded {
+        if loadedModel?.id == config.id, await inferenceEngine.isLoaded {
             return config
         }
         
-        if inferenceEngine.isLoaded {
-            inferenceEngine.unloadModel()
+        if await inferenceEngine.isLoaded {
+            await inferenceEngine.unloadModel()
         }
         
         isLoading = true
@@ -55,12 +53,12 @@ final class ServiceContainer {
             throw ModelError.insufficientMemory(needed: 2.0, available: 0)
         }
         
-        if loadedModel?.id == config.id, inferenceEngine.isLoaded {
+        if loadedModel?.id == config.id, await inferenceEngine.isLoaded {
             return config
         }
         
-        if inferenceEngine.isLoaded {
-            inferenceEngine.unloadModel()
+        if await inferenceEngine.isLoaded {
+            await inferenceEngine.unloadModel()
         }
         
         isLoading = true
@@ -81,8 +79,8 @@ final class ServiceContainer {
         memoryMonitor.currentPressure != .critical && memoryMonitor.currentPressure != .warning
     }
     
-    func unloadModel() {
-        inferenceEngine.unloadModel()
+    func unloadModel() async {
+        await inferenceEngine.unloadModel()
         loadedModel = nil
     }
 }

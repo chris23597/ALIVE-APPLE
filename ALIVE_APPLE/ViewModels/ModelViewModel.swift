@@ -53,7 +53,7 @@ final class ModelViewModel {
     }
     
     func unloadModel() {
-        services?.unloadModel()
+        Task { await services?.unloadModel() }
         memoryUsageGB = 0
     }
     
