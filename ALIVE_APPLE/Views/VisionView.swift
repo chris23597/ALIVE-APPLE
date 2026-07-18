@@ -9,6 +9,7 @@ import SwiftUI
 /// 4. Never leave user on spinner with no interim text
 struct VisionView: View {
     @Environment(AppState.self) private var appState
+    @Environment(ServiceContainer.self) private var services
     @State private var capturedImage: UIImage?
     @State private var selectedImage: UIImage?
     @State private var analysisPrompt: String = ""
@@ -327,16 +328,13 @@ struct VisionView: View {
         
         Task {
             do {
-                let engine = InferenceEngine()
-                let manager = ModelManager(engine: engine)
-                
                 // Fast tier is always available — this is the smoke path
                 let result = try await visionService.analyze(
                     imageData: imageData,
                     prompt: prompt,
                     tier: .fast,
-                    engine: engine,
-                    modelManager: manager
+                    engine: services.inferenceEngine,
+                    modelManager: services.modelManager
                 )
                 
                 smokeResult = result
@@ -366,9 +364,6 @@ struct VisionView: View {
         
         Task {
             do {
-                let engine = InferenceEngine()
-                let manager = ModelManager(engine: engine)
-                
                 // Try moderate tier; fall back to fast if unavailable
                 let tier: RoutingTier = appState.availableModels.contains(where: { $0.tier == .moderate && $0.modelType == .vision })
                     ? .moderate
@@ -383,8 +378,8 @@ struct VisionView: View {
                             imageData: imageData,
                             prompt: prompt,
                             tier: tier,
-                            engine: engine,
-                            modelManager: manager
+                            engine: services.inferenceEngine,
+                            modelManager: services.modelManager
                         )
                     }
                     group.addTask {

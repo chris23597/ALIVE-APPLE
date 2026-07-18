@@ -39,8 +39,8 @@ actor ModelManager {
             throw ModelError.noModelForTier(tier)
         }
         
-        // Already loaded? Return it
-        if loadedTextModel?.id == config.id, await engine.isModelLoaded {
+        // Already loaded? Return it (only if engine holds this specific model)
+        if loadedTextModel?.id == config.id, await engine.activeModelId == config.id {
             return config
         }
         
@@ -102,7 +102,7 @@ actor ModelManager {
             throw ModelError.noVLMForTier(tier)
         }
         
-        if loadedVisionModel?.id == config.id, await engine.isModelLoaded {
+        if loadedVisionModel?.id == config.id, await engine.activeModelId == config.id {
             return config
         }
         

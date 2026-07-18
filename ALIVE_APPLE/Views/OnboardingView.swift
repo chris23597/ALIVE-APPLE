@@ -285,7 +285,7 @@ struct OnboardingView: View {
                     systemImage: "message.fill",
                     color: .green
                 ) {
-                    
+                    appState.selectedTab = .chat
                 }
             }
             .padding(.bottom, 40)

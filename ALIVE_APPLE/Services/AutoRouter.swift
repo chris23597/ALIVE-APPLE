@@ -1,5 +1,4 @@
 import Foundation
-import Network
 
 /// Intelligent offline/online auto-router for model tier selection
 actor AutoRouter {
@@ -12,23 +11,6 @@ actor AutoRouter {
     // MARK: - State
     
     private var routingHistory: [RoutingRecord] = []
-    private let networkMonitor = NWPathMonitor()
-    private var isOnline: Bool = false
-    
-    // MARK: - Lifecycle
-    
-    init() {
-        networkMonitor.pathUpdateHandler = { [weak self] path in
-            Task { [weak self] in
-                await self?.updateConnectivity(path.status == .satisfied)
-            }
-        }
-        networkMonitor.start(queue: DispatchQueue.global(qos: .utility))
-    }
-    
-    private func updateConnectivity(_ online: Bool) {
-        isOnline = online
-    }
     
     // MARK: - Main Routing Entry Point
     

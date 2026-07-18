@@ -434,6 +434,12 @@ actor InferenceEngine {
         activeModel != nil && modelPath != nil
     }
     
+    /// The id of the currently loaded model (nil if nothing loaded).
+    /// ModelManager uses this to avoid confusing a loaded text model with a loaded vision model.
+    var activeModelId: String? {
+        activeModel?.id
+    }
+    
     /// The loaded model's effective context size (tokens), or 0 if no model loaded
     var contextSize: Int {
         activeModel?.contextSize ?? 0
