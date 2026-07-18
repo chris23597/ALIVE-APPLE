@@ -25,7 +25,7 @@ enum RoutingTier: String, CaseIterable, Codable, Sendable {
     
     var description: String {
         switch self {
-        case .fast: return "Fast responses · On-device · Phi-4 Mini 3.8B"
+        case .fast: return "Fast on-device · Phi-4 Mini 3.8B (MLX 4-bit) · iPhone 16"
         case .none: return "No model loaded"
         }
     }

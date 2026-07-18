@@ -1,11 +1,11 @@
 import Foundation
 
-/// Model configurations for v1 Fast tier only.
-/// Both models use MLX format (safetensors, 4-bit quantized).
+/// Model configurations for v1 Fast tier (iPhone 16 — small + strong).
+/// Weights are **MLX safetensors** (typically 4-bit from mlx-community).
 struct ModelConfig: Identifiable, Codable, Hashable {
     let id: String
     let name: String
-    let directoryName: String      // Subdirectory in Models/ containing safetensors
+    let directoryName: String      // Subdirectory under Documents/Models/
     let fileSizeBytes: Int64
     let parameterCount: String
     let quant: String
@@ -35,17 +35,27 @@ struct ModelConfig: Identifiable, Codable, Hashable {
         isLoaded ? "Ready · \(formattedSize)" : "Not Loaded · \(formattedSize)"
     }
     
-    /// HuggingFace repo ID for mlx-community pre-quantized model
+    /// HuggingFace repo ID for pre-quantized MLX weights (download / USB copy source).
     var hfRepoId: String {
         switch id {
-        case "phi-4-mini-3.8b": return "mlx-community/Phi-4-mini-instruct-4bit"
-        case "smolvlm2-2.2b":   return "mlx-community/SmolVLM2-2.2B-Instruct-4bit"
-        default:                return ""
+        case "phi-4-mini-3.8b":
+            // Primary chat model — strong ~3.8B instruct, 4-bit MLX for iPhone 16
+            return "mlx-community/Phi-4-mini-instruct-4bit"
+        case "smolvlm2-2.2b":
+            return "mlx-community/SmolVLM2-2.2B-Instruct-4bit"
+        default:
+            return ""
         }
     }
     
-    // MARK: - v1 Model Definitions
+    /// Short user-facing download hint
+    var downloadHint: String {
+        "HF: \(hfRepoId) → folder named `\(directoryName)` with .safetensors + config.json"
+    }
     
+    // MARK: - v1 Model Definitions (recommended for iPhone 16)
+    
+    /// Default text / reasoning model — Phi-4 Mini Instruct (4-bit MLX).
     static let phi4Mini = ModelConfig(
         id: "phi-4-mini-3.8b",
         name: "Phi-4 Mini 3.8B",
@@ -59,6 +69,7 @@ struct ModelConfig: Identifiable, Codable, Hashable {
         isLoaded: false
     )
     
+    /// Small vision model (optional) — keep for camera / photo analysis path.
     static let smolVLM2 = ModelConfig(
         id: "smolvlm2-2.2b",
         name: "SmolVLM2 2.2B",
@@ -72,5 +83,9 @@ struct ModelConfig: Identifiable, Codable, Hashable {
         isLoaded: false
     )
     
+    /// Default load order: text first, then vision.
     static let allModels: [ModelConfig] = [phi4Mini, smolVLM2]
+    
+    /// Recommended default for chat
+    static let recommendedText: ModelConfig = .phi4Mini
 }

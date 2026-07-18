@@ -52,22 +52,41 @@ actor InferenceEngine {
         let modelDir = modelsURL.appendingPathComponent(config.directoryName, isDirectory: true)
         
         #if canImport(MLXLLM)
-        let safetensorsFiles = (try? FileManager.default.contentsOfDirectory(atPath: modelDir.path))?
-            .filter { $0.hasSuffix(".safetensors") } ?? []
-        
-        guard !safetensorsFiles.isEmpty else {
+        // Prefer directory load (USB / Files import of mlx-community 4-bit weights).
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: modelDir.path, isDirectory: &isDirectory)
+        guard exists, isDirectory.boolValue else {
             throw InferenceError.modelFileNotFound(config.directoryName)
         }
         
-        let container = try await ModelContainer.load(directory: modelDir)
-        self.modelContainer = container
-        self.chatSession = ChatSession(container)
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: modelDir.path)) ?? []
+        let hasWeights = contents.contains { $0.hasSuffix(".safetensors") || $0 == "model.safetensors.index.json" }
+        let hasConfig = contents.contains { $0 == "config.json" || $0.hasSuffix("config.json") }
+        guard hasWeights else {
+            throw InferenceError.modelFileNotFound(
+                "\(config.directoryName) (need .safetensors from \(config.hfRepoId))"
+            )
+        }
+        if !hasConfig {
+            print("[InferenceEngine] WARN: no config.json in \(modelDir.lastPathComponent) — load may fail")
+        }
+        
+        do {
+            let container = try await ModelContainer.load(directory: modelDir)
+            self.modelContainer = container
+            self.chatSession = ChatSession(container)
+        } catch {
+            throw InferenceError.modelLoadFailed("MLX load failed for \(config.name): \(error.localizedDescription)")
+        }
+        #else
+        // Demo / CI build without SPM: accept path so UI can exercise load/unload.
+        print("[InferenceEngine] Demo load (no MLXLLM) — add SPM packages for real weights")
         #endif
         
         self.modelDirectory = modelDir
         self.activeModel = config
         
-        print("[InferenceEngine] Loaded \(config.name) (\(config.formattedSize))")
+        print("[InferenceEngine] Loaded \(config.name) (\(config.formattedSize)) dir=\(modelDir.lastPathComponent)")
     }
     
     func unloadModel() {
@@ -100,23 +119,13 @@ actor InferenceEngine {
                 
                 do {
                     #if canImport(MLXLLM)
-                    guard let session = chatSession, activeModel?.id == model.id else {
-                        throw InferenceError.modelLoadFailed("Model not loaded")
-                    }
-                    
-                    let prompt = buildPrompt(messages: messages, model: model)
-                    let response = try await withTimeout(seconds: inferenceTimeoutSeconds) {
-                        try await session.respond(to: prompt)
-                    }
-                    let words = response.split(separator: " ", omittingEmptySubsequences: false)
-                    for (i, word) in words.enumerated() {
-                        try Task.checkCancellation()
-                        let chunk = i < words.count - 1 ? String(word) + " " : String(word)
-                        continuation.yield(chunk)
-                        try await Task.sleep(for: .milliseconds(15))
-                    }
+                    try await generateMLXStreaming(
+                        messages: messages,
+                        model: model,
+                        continuation: continuation
+                    )
                     #else
-                    // Demo fallback — replace with real MLX when SPM packages are linked
+                    // Demo fallback — real tokens when mlx-swift-lm products are linked in Xcode
                     try await generateDemoResponse(
                         messages: messages,
                         model: model,
@@ -173,9 +182,56 @@ actor InferenceEngine {
         }
     }
     
+    // MARK: - MLX generation (real path when packages linked)
+    
+    #if canImport(MLXLLM)
+    /// Stream tokens from ChatSession. Prefer streamResponse; fall back to respond().
+    private func generateMLXStreaming(
+        messages: [ChatMessage],
+        model: ModelConfig,
+        continuation: AsyncThrowingStream<String, Error>.Continuation
+    ) async throws {
+        guard let session = chatSession, activeModel?.id == model.id else {
+            throw InferenceError.modelLoadFailed("Model not loaded — import \(model.name) then Load in Models tab")
+        }
+        
+        let prompt = buildPrompt(messages: messages, model: model)
+        
+        // Primary: true token streaming (mlx-swift-lm ChatSession.streamResponse)
+        do {
+            var produced = false
+            for try await text in session.streamResponse(to: prompt) {
+                try Task.checkCancellation()
+                if !text.isEmpty {
+                    produced = true
+                    continuation.yield(text)
+                }
+            }
+            if produced { return }
+        } catch {
+            // Some model/session builds only implement respond(to:)
+            print("[InferenceEngine] streamResponse failed, falling back to respond: \(error)")
+        }
+        
+        let response: String = try await withTimeout(seconds: inferenceTimeoutSeconds) {
+            try await session.respond(to: prompt)
+        }
+        // Soft stream so Chat UI still feels live if only full-string API is available
+        let words = response.split(separator: " ", omittingEmptySubsequences: false)
+        for (i, word) in words.enumerated() {
+            try Task.checkCancellation()
+            let piece = i < words.count - 1 ? String(word) + " " : String(word)
+            continuation.yield(piece)
+            try await Task.sleep(for: .milliseconds(8))
+        }
+    }
+    #endif
+    
     // MARK: - Prompt Building
     
+    /// ChatML-style prompt works well for Phi-4 Mini Instruct and many mlx-community instruct models.
     private func buildPrompt(messages: [ChatMessage], model: ModelConfig) -> String {
+        _ = model
         var prompt = ""
         prompt += "<|im_start|>system\n\(AliveSystemPrompt.core)<|im_end|>\n"
         
