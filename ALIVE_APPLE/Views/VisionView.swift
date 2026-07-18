@@ -1,12 +1,7 @@
 import SwiftUI
 
-/// Vision analysis view — camera capture, photo picker, VLM analysis with Smoke→Deep UX
-///
-/// UX Pattern (from competitive-edge / alive-smoke-deep):
-/// 1. **Smoke (fast):** 1–3 lines + safety + best guess common name
-/// 2. **CTA:** "Tap Deep Analysis for full profile / manuals"
-/// 3. **Deep (slow):** more detail, citations — **timeout capped at 45s**
-/// 4. Never leave user on spinner with no interim text
+/// Vision analysis view — v1 simplified.
+/// Single analysis path: capture/select image → VLM analysis → streaming result.
 struct VisionView: View {
     @Environment(AppState.self) private var appState
     @Environment(ServiceContainer.self) private var services
@@ -14,25 +9,12 @@ struct VisionView: View {
     @State private var selectedImage: UIImage?
     @State private var analysisPrompt: String = ""
     
-    // Smoke state
-    @State private var smokeResult: String = ""
-    @State private var isSmokeLoading: Bool = false
-    @State private var smokeTier: RoutingTier = .fast
-    
-    // Deep state
-    @State private var deepResult: String = ""
-    @State private var isDeepLoading: Bool = false
-    @State private var deepProgress: String = "Starting deep analysis..."
-    @State private var showDeep: Bool = false
-    
-    // Error
+    @State private var analysisResult: String = ""
+    @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     
-    // Capture
     @State private var showCamera: Bool = false
     @State private var showPhotoPicker: Bool = false
-    
-    private let visionService = VisionService()
     
     var displayImage: UIImage? {
         capturedImage ?? selectedImage
@@ -56,27 +38,17 @@ struct VisionView: View {
                     placeholderImage
                 }
                 
-                // Capture + clear buttons
                 captureButtons
-                
                 Divider()
-                
-                // Prompt input
                 promptSection
                 
-                // ⚡ SMOKE RESULT (fast — always shown first)
-                if isSmokeLoading {
+                // Loading indicator
+                if isLoading {
                     HStack(spacing: 12) {
-                        ProgressView()
-                            .scaleEffect(0.9)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Quick analysis...")
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                            Text("Fast VLM scanning the image")
-                                .font(.caption2)
-                                .foregroundColor(Color.secondary)
-                        }
+                        ProgressView().scaleEffect(0.9)
+                        Text("Analyzing image...")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -84,25 +56,26 @@ struct VisionView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
-                if !smokeResult.isEmpty {
-                    smokeResultCard
+                // Result
+                if !analysisResult.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "bolt.fill")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                            Text("Analysis")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.green)
+                        }
+                        Text(LocalizedStringKey(analysisResult))
+                            .font(.body)
+                            .padding(12)
+                            .background(Color.green.opacity(0.05))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
                 }
                 
-                // 🔍 DEEP ANALYSIS (optional — user taps CTA)
-                if showDeep && isDeepLoading {
-                    deepLoadingCard
-                }
-                
-                if !deepResult.isEmpty {
-                    deepResultCard
-                }
-                
-                // CTA button
-                if !smokeResult.isEmpty && !showDeep {
-                    deepAnalysisCTA
-                }
-                
-                // Error
                 if let error = errorMessage {
                     ErrorBanner(message: error)
                 }
@@ -110,8 +83,6 @@ struct VisionView: View {
             .padding(16)
         }
         .navigationTitle("Vision")
-        .animation(.easeInOut(duration: 0.3), value: smokeResult)
-        .animation(.easeInOut(duration: 0.3), value: showDeep)
         .fullScreenCover(isPresented: $showCamera) {
             CameraView(capturedImage: $capturedImage)
         }
@@ -120,8 +91,7 @@ struct VisionView: View {
         }
         .onChange(of: displayImage) { _, newImage in
             if newImage != nil {
-                // Auto-trigger smoke when image is selected
-                runSmokeAnalysis()
+                runAnalysis()
             } else {
                 clearAll()
             }
@@ -184,267 +154,56 @@ struct VisionView: View {
                 axis: .vertical
             )
             .textFieldStyle(.roundedBorder)
-            .disabled(isSmokeLoading || isDeepLoading)
-            .onSubmit { runSmokeAnalysis() }
-        }
-    }
-    
-    private var smokeResultCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "bolt.fill")
-                    .font(.caption)
-                    .foregroundColor(.green)
-                Text("Quick Analysis")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.green)
-                Spacer()
-                TierBadge(tier: smokeTier)
-            }
-            
-            Text(LocalizedStringKey(smokeResult))
-                .font(.body)
-                .padding(12)
-                .background(Color.green.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            
-            if !isSmokeLoading {
-                Text("⚡ Fast VLM — ready in ~2-4s")
-                    .font(.caption2)
-                    .foregroundColor(Color.secondary)
-            }
-        }
-    }
-    
-    private var deepAnalysisCTA: some View {
-        Button(action: runDeepAnalysis) {
-            HStack {
-                Image(systemName: "brain.head.profile")
-                    .font(.headline)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Tap for Deep Analysis")
-                        .font(.body)
-                        .fontWeight(.semibold)
-                    Text("Detailed identification, references, citations (up to 45s)")
-                        .font(.caption2)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.orange.opacity(0.1))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-    
-    private var deepLoadingCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "brain.head.profile")
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                Text("Deep Analysis")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.orange)
-                Spacer()
-                ProgressView()
-                    .scaleEffect(0.8)
-            }
-            
-            HStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.3))
-                    .frame(width: 8, height: 8)
-                Text(deepProgress)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Linear progress indicator
-            ProgressView(value: 0.0, total: 45.0)
-                .tint(.orange)
-            
-            Text("⏱ Timeout at 45s · using \(smokeTier == .fast ? "Moderate" : "Fast") VLM")
-                .font(.caption2)
-                .foregroundColor(Color.secondary)
-        }
-        .padding(12)
-        .background(Color.orange.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-    
-    private var deepResultCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "brain.head.profile")
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                Text("Deep Analysis")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
-                if deepResult.count > 100 {
-                    Text("\(deepResult.count) chars")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Text(LocalizedStringKey(deepResult))
-                .font(.body)
-                .padding(12)
-                .background(Color.orange.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            .disabled(isLoading)
+            .onSubmit { runAnalysis() }
         }
     }
     
     // MARK: - Actions
     
-    /// Phase 1: Fast smoke analysis — always runs first when image appears
-    private func runSmokeAnalysis() {
+    private func runAnalysis() {
         guard let image = displayImage,
               let imageData = image.jpegData(compressionQuality: 0.85) else { return }
         
-        isSmokeLoading = true
+        isLoading = true
         errorMessage = nil
-        smokeResult = ""
-        showDeep = false
-        deepResult = ""
+        analysisResult = ""
         
-        // Use prompt if user typed something, else default
         let prompt = analysisPrompt.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "Briefly describe this image. What's the most notable thing? Give a 1-3 line summary only."
-            : "Quick summary (1-3 lines): \(analysisPrompt)"
+            ? "Describe this image in detail. What do you see?"
+            : analysisPrompt
         
         Task {
             do {
-                // Fast tier is always available — this is the smoke path
-                let result = try await visionService.analyze(
+                // Ensure vision model is loaded
+                _ = try await services.ensureVisionModelLoaded()
+                
+                let stream = await services.visionService.analyze(
                     imageData: imageData,
                     prompt: prompt,
-                    tier: .fast,
-                    engine: services.inferenceEngine,
-                    modelManager: services.modelManager
+                    engine: services.inferenceEngine
                 )
                 
-                smokeResult = result
-                smokeTier = .fast
-            } catch {
-                errorMessage = "Quick analysis failed: \(error.localizedDescription)"
-                smokeResult = "Analysis unavailable. Try a different image or check model status."
-            }
-            
-            isSmokeLoading = false
-        }
-    }
-    
-    /// Phase 2: Deep analysis — user-initiated, timed, more thorough
-    private func runDeepAnalysis() {
-        guard let image = displayImage,
-              let imageData = image.jpegData(compressionQuality: 0.85) else { return }
-        
-        showDeep = true
-        isDeepLoading = true
-        deepResult = ""
-        deepProgress = "Loading stronger model..."
-        
-        let prompt = analysisPrompt.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "Describe this image in detail. Identify any objects, text, plants, or notable features. Provide thorough analysis with specific observations."
-            : "Provide a thorough detailed analysis of this image: \(analysisPrompt)"
-        
-        Task {
-            do {
-                // Try moderate tier; fall back to fast if unavailable
-                let tier: RoutingTier = appState.availableModels.contains(where: { $0.tier == .moderate && $0.modelType == .vision })
-                    ? .moderate
-                    : .fast
-                
-                deepProgress = "Analyzing in depth (\(tier.rawValue) tier)..."
-                
-                // Hard timeout: 45 seconds
-                let timedResult = try await withThrowingTaskGroup(of: String.self) { group in
-                    group.addTask {
-                        try await visionService.analyze(
-                            imageData: imageData,
-                            prompt: prompt,
-                            tier: tier,
-                            engine: services.inferenceEngine,
-                            modelManager: services.modelManager
-                        )
-                    }
-                    group.addTask {
-                        // Timeout
-                        try await Task.sleep(for: .seconds(45))
-                        throw DeepAnalysisError.timeout
-                    }
-                    
-                    guard let result = try await group.next() else {
-                        throw DeepAnalysisError.timeout
-                    }
-                    group.cancelAll()
-                    return result
+                for try await token in stream {
+                    analysisResult += token
                 }
-                
-                deepResult = timedResult
-            } catch DeepAnalysisError.timeout {
-                deepResult = """
-                ⏱ **Analysis timed out after 45s**
-                
-                The full analysis required more time. Here's what we found so far:
-                
-                \(smokeResult)
-                
-                **Tips:**
-                - Try a smaller or clearer image
-                - Switch to Pro tier for faster cloud analysis
-                """
             } catch {
-                deepResult = """
-                🔄 **Deep analysis error:** \(error.localizedDescription)
-                
-                **Quick analysis result** (already available above) covers the main identification.
-                """
+                errorMessage = "Analysis failed: \(error.localizedDescription)"
             }
-            
-            isDeepLoading = false
-            deepProgress = "Complete"
+            isLoading = false
         }
     }
     
     private func clearImage() {
         capturedImage = nil
         selectedImage = nil
+        clearAll()
     }
     
     private func clearAll() {
-        smokeResult = ""
-        deepResult = ""
+        analysisResult = ""
         errorMessage = nil
-        showDeep = false
-        isSmokeLoading = false
-        isDeepLoading = false
-    }
-}
-
-// MARK: - Deep Analysis Error
-
-enum DeepAnalysisError: LocalizedError {
-    case timeout
-    
-    var errorDescription: String? {
-        switch self {
-        case .timeout: return "Deep analysis took too long (>45s)"
-        }
+        isLoading = false
     }
 }
 

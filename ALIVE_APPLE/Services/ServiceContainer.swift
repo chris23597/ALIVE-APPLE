@@ -1,8 +1,7 @@
 import Foundation
 import Observation
 
-/// Shared service container — v1 simplified.
-/// All ViewModels share the same service instances via @Environment.
+/// Shared service container — v1 with memory/thermal gates.
 @MainActor
 @Observable
 final class ServiceContainer {
@@ -10,24 +9,30 @@ final class ServiceContainer {
     let modelManager = ModelManager(engine: InferenceEngine())
     let visionService = VisionService()
     let usbImportService = USBImportService()
+    let memoryMonitor = MemoryMonitor()
+    let thermalMonitor = ThermalMonitor()
     
-    /// Shared model state (visible across all views)
+    /// Shared model state
     var loadedModel: ModelConfig?
     var isModelLoaded: Bool { loadedModel != nil }
     var isLoading: Bool = false
     
-    /// Load the Fast tier text model (Phi-4 Mini)
+    /// Load the Fast tier text model (Phi-4 Mini).
+    /// Enforces memory and thermal gates before loading.
     func ensureTextModelLoaded() async throws -> ModelConfig {
         guard let config = RoutingTier.fast.textModel else {
             throw ModelError.noModelForTier(.fast)
         }
         
-        // If already loaded with correct model, return it
+        // Memory gate
+        guard memoryMonitor.pressureLevel != .critical else {
+            throw ModelError.insufficientMemory(needed: 3.0, available: 0)
+        }
+        
         if loadedModel?.id == config.id, inferenceEngine.isLoaded {
             return config
         }
         
-        // Unload any currently loaded model (text or vision)
         if inferenceEngine.isLoaded {
             inferenceEngine.unloadModel()
         }
@@ -40,17 +45,20 @@ final class ServiceContainer {
         return config
     }
     
-    /// Load the Fast tier vision model (SmolVLM2)
+    /// Load the Fast tier vision model (SmolVLM2).
     func ensureVisionModelLoaded() async throws -> ModelConfig {
         guard let config = RoutingTier.fast.visionModel else {
             throw ModelError.noModelForTier(.fast)
         }
         
+        guard memoryMonitor.pressureLevel != .critical else {
+            throw ModelError.insufficientMemory(needed: 2.0, available: 0)
+        }
+        
         if loadedModel?.id == config.id, inferenceEngine.isLoaded {
             return config
         }
         
-        // Unload text model to free memory
         if inferenceEngine.isLoaded {
             inferenceEngine.unloadModel()
         }
@@ -63,20 +71,18 @@ final class ServiceContainer {
         return config
     }
     
-    /// Unload current model to free memory
+    /// Thermal gate: returns false if inference should be paused.
+    var canRunInference: Bool {
+        thermalMonitor.state != .critical && thermalMonitor.state != .serious
+    }
+    
+    /// Memory check: returns true if there's room for another model.
+    var hasMemoryHeadroom: Bool {
+        memoryMonitor.pressureLevel != .critical && memoryMonitor.pressureLevel != .warning
+    }
+    
     func unloadModel() {
         inferenceEngine.unloadModel()
         loadedModel = nil
-    }
-}
-
-enum ModelError: LocalizedError {
-    case noModelForTier(RoutingTier)
-    
-    var errorDescription: String? {
-        switch self {
-        case .noModelForTier(let tier):
-            return "No model available for \(tier.label) tier"
-        }
     }
 }

@@ -1,26 +1,20 @@
 import Foundation
-import UIKit
-import UniformTypeIdentifiers
-import AVFoundation
-import PhotosUI
 
-/// On-device vision service: camera capture, photo picker, image preprocessing
+/// On-device vision service: image preprocessing + VLM dispatch.
+/// v1 simplified: single Fast tier, direct VLM analysis.
 actor VisionService {
     
     // MARK: - Image Preprocessing
     
-    /// Resize and normalize an image for VLM input
     func preprocessImage(_ imageData: Data, maxDimension: CGFloat = 1024) -> Data? {
         guard let image = UIImage(data: imageData) else {
             return nil
         }
         
-        // Resize preserving aspect ratio
         let originalSize = image.size
         let scale = min(maxDimension / originalSize.width, maxDimension / originalSize.height)
         
         guard scale < 1.0 else {
-            // Image is already small enough
             return imageData
         }
         
@@ -37,11 +31,6 @@ actor VisionService {
         return resized?.jpegData(compressionQuality: 0.85)
     }
     
-    /// Convert image to base64 for API transport
-    func imageToBase64(_ imageData: Data) -> String {
-        "data:image/jpeg;base64," + imageData.base64EncodedString()
-    }
-    
     // MARK: - Camera Permission
     
     func requestCameraPermission() async -> Bool {
@@ -52,67 +41,39 @@ actor VisionService {
         }
     }
     
-    // MARK: - Photo Library
+    // MARK: - Analysis (v1: single path)
     
-    func requestPhotoLibraryPermission() async -> Bool {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        if status == .authorized || status == .limited {
-            return true
-        }
-        return await withCheckedContinuation { continuation in
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
-                continuation.resume(returning: newStatus == .authorized || newStatus == .limited)
-            }
-        }
-    }
-    
-    // MARK: - Analysis Pipeline
-    
-    /// Complete vision analysis pipeline
+    /// Analyze an image using the vision model.
+    /// Returns streaming tokens via AsyncThrowingStream.
     func analyze(
         imageData: Data,
         prompt: String,
-        tier: RoutingTier,
-        engine: InferenceEngine,
-        modelManager: ModelManager
-    ) async throws -> String {
-        // 1. Preprocess image
-        guard let processedImage = preprocessImage(imageData) else {
-            throw VisionError.imageProcessingFailed
+        engine: InferenceEngine
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard let processed = preprocessImage(imageData) else {
+                        continuation.finish(throwing: VisionError.imageProcessingFailed)
+                        return
+                    }
+                    
+                    let model = RoutingTier.fast.visionModel!
+                    let stream = await engine.generateVision(
+                        image: processed,
+                        prompt: prompt,
+                        model: model
+                    )
+                    
+                    for try await token in stream {
+                        continuation.yield(token)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
         }
-        
-        // 2. Ensure VLM is loaded
-        let model = try await modelManager.ensureVisionModelLoaded(tier: tier)
-        
-        // 3. Run inference
-        var fullResponse = ""
-        let stream = await engine.generateVision(
-            image: processedImage,
-            prompt: prompt,
-            model: model
-        )
-        
-        for try await token in stream {
-            fullResponse += token
-        }
-        
-        return fullResponse
-    }
-    
-    // MARK: - Quick Analysis (Fast tier, no loading wait)
-    
-    func quickAnalyze(
-        imageData: Data,
-        engine: InferenceEngine,
-        modelManager: ModelManager
-    ) async throws -> String {
-        return try await analyze(
-            imageData: imageData,
-            prompt: "Describe this image in detail. What do you see?",
-            tier: .fast,
-            engine: engine,
-            modelManager: modelManager
-        )
     }
 }
 
@@ -135,7 +96,7 @@ enum VisionError: LocalizedError {
     }
 }
 
-// MARK: - Camera View Representable (for SwiftUI)
+// MARK: - Camera View (SwiftUI)
 
 import SwiftUI
 
@@ -205,16 +166,18 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
         
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            guard let provider = results.first?.itemProvider,
-                  provider.canLoadObject(ofClass: UIImage.self) else {
+            guard let result = results.first else {
                 parent.dismiss()
                 return
             }
             
-            provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { item, _ in
-                guard let img = item as? UIImage else { return }
+            result.itemProvider.loadObject(ofClass: UIImage.self) { image, error in
+                if let image = image as? UIImage {
+                    DispatchQueue.main.async {
+                        self.parent.selectedImage = image
+                    }
+                }
                 DispatchQueue.main.async {
-                    self.parent.selectedImage = img
                     self.parent.dismiss()
                 }
             }

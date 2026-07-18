@@ -1,25 +1,21 @@
 import Foundation
+import Observation
 
-/// Manages model lifecycle: load, unload, discover, validate.
-/// Delegates actual inference to InferenceEngine.
+/// Manages MLX model lifecycle: load, unload, discover, validate, import.
+/// v1 simplified: single model at a time (text or vision, never both).
 actor ModelManager {
     
     // MARK: - Configuration
     
     private let maxMemoryBudgetGB: Float = 5.5
-    private let idleUnloadSeconds: TimeInterval = 300  // 5 minutes
+    private let idleUnloadSeconds: TimeInterval = 300
     
     // MARK: - State
     
-    private var loadedTextModel: ModelConfig?
-    private var loadedVisionModel: ModelConfig?
+    private var loadedModel: ModelConfig?
     private var idleTimer: Task<Void, Never>?
     private var currentMemoryUsageGB: Float = 0
-    
-    /// The inference engine that performs actual model loading/inference
     private let engine: InferenceEngine
-    
-    // MARK: - Init
     
     init(engine: InferenceEngine) {
         self.engine = engine
@@ -30,38 +26,26 @@ actor ModelManager {
         return documents.appendingPathComponent("Models", isDirectory: true)
     }
     
-    // MARK: - Model Loading (delegated to InferenceEngine)
+    // MARK: - Model Loading
     
-    /// Ensure a text model is loaded for the given tier.
-    /// Delegates actual llama.cpp loading to InferenceEngine.
-    func ensureTextModelLoaded(tier: RoutingTier) async throws -> ModelConfig {
-        guard var config = tier.textModel else {
-            throw ModelError.noModelForTier(tier)
-        }
-        
-        // Already loaded? Return it (only if engine holds this specific model)
-        if loadedTextModel?.id == config.id, await engine.activeModelId == config.id {
+    /// Ensure a specific model is loaded (text or vision).
+    /// Automatically unloads any currently loaded model to free memory.
+    func ensureModelLoaded(_ config: ModelConfig) async throws -> ModelConfig {
+        // Already loaded? Return it
+        if loadedModel?.id == config.id, await engine.isLoaded {
             return config
         }
         
-        // Need to swap — check memory
+        // Check memory budget
         let neededGB = Float(config.fileSizeBytes) / 1e9
-        let visionGB = loadedVisionModel.map { Float($0.fileSizeBytes) / 1e9 } ?? 0
-        
-        if neededGB + visionGB > maxMemoryBudgetGB {
-            // Try unloading vision first
-            if loadedVisionModel != nil {
-                unloadVisionModel()
-                try await Task.sleep(for: .seconds(0.5))
-            }
-            if neededGB > maxMemoryBudgetGB {
-                throw ModelError.insufficientMemory(needed: neededGB, available: maxMemoryBudgetGB)
-            }
+        guard neededGB <= maxMemoryBudgetGB else {
+            throw ModelError.insufficientMemory(needed: neededGB, available: maxMemoryBudgetGB)
         }
         
-        // Unload current text model
-        if loadedTextModel != nil {
-            unloadTextModel()
+        // Unload current model if different
+        if loadedModel != nil {
+            unloadCurrentModel()
+            try await Task.sleep(for: .seconds(0.3))
         }
         
         // Delegate loading to InferenceEngine
@@ -69,138 +53,41 @@ actor ModelManager {
         try await engine.loadModel(config)
         let elapsed = Date().timeIntervalSince(startTime)
         
-        // Track state
-        loadedTextModel = config
-        currentMemoryUsageGB += neededGB
+        loadedModel = config
+        currentMemoryUsageGB = neededGB
         
-        // Update config with measured load time
-        config = ModelConfig(
-            id: config.id,
-            name: config.name,
-            fileName: config.fileName,
-            fileSizeBytes: config.fileSizeBytes,
-            parameterCount: config.parameterCount,
-            quant: config.quant,
-            modelType: config.modelType,
-            tier: config.tier,
-            contextSize: config.contextSize,
-            isLoaded: true,
-            loadTimeSeconds: elapsed,
-            mmprojFileName: config.mmprojFileName
-        )
-        loadedTextModel = config
-        
-        print("[ModelManager] Loaded text model: \(config.name) (\(config.formattedSize)) in \(String(format: "%.2f", elapsed))s")
+        print("[ModelManager] Loaded \(config.name) (\(config.formattedSize)) in \(String(format: "%.2f", elapsed))s")
         resetIdleTimer()
         
         return config
     }
     
-    /// Ensure a vision model is loaded for the given tier.
-    /// Delegates actual llama.cpp loading to InferenceEngine.
-    func ensureVisionModelLoaded(tier: RoutingTier) async throws -> ModelConfig {
-        guard var config = tier.visionModel else {
-            throw ModelError.noVLMForTier(tier)
-        }
-        
-        if loadedVisionModel?.id == config.id, await engine.activeModelId == config.id {
-            return config
-        }
-        
-        let neededGB = Float(config.fileSizeBytes) / 1e9
-        let textGB = loadedTextModel.map { Float($0.fileSizeBytes) / 1e9 } ?? 0
-        
-        // Fast text + moderate vision = tight (~7.8GB)
-        if neededGB + textGB > maxMemoryBudgetGB {
-            // Keep fast text, load requested vision
-            if neededGB + 2.8 > maxMemoryBudgetGB {
-                // Even with fast text, it's tight — unload text to be safe
-                unloadTextModel()
-            }
-        }
-        
-        if loadedVisionModel != nil {
-            unloadVisionModel()
-        }
-        
-        // Delegate loading to InferenceEngine
-        let startTime = Date()
-        try await engine.loadModel(config)
-        let elapsed = Date().timeIntervalSince(startTime)
-        
-        loadedVisionModel = config
-        currentMemoryUsageGB += neededGB
-        
-        config = ModelConfig(
-            id: config.id,
-            name: config.name,
-            fileName: config.fileName,
-            fileSizeBytes: config.fileSizeBytes,
-            parameterCount: config.parameterCount,
-            quant: config.quant,
-            modelType: config.modelType,
-            tier: config.tier,
-            contextSize: config.contextSize,
-            isLoaded: true,
-            loadTimeSeconds: elapsed,
-            mmprojFileName: config.mmprojFileName
-        )
-        loadedVisionModel = config
-        
-        print("[ModelManager] Loaded vision model: \(config.name) (\(config.formattedSize)) in \(String(format: "%.2f", elapsed))s")
-        resetIdleTimer()
-        
-        return config
-    }
-    
-    // MARK: - Model Unloading (delegated to InferenceEngine)
-    
-    func unloadTextModel() {
-        guard let model = loadedTextModel else { return }
+    func unloadCurrentModel() {
+        guard let model = loadedModel else { return }
         let freedGB = Float(model.fileSizeBytes) / 1e9
         currentMemoryUsageGB -= freedGB
-        loadedTextModel = nil
-        // InferenceEngine handles its own state on next loadModel call
-        if loadedVisionModel == nil {
-            Task { await engine.unloadModel() }
-        }
-        print("[ModelManager] Unloaded text model: \(model.name)")
-    }
-    
-    func unloadVisionModel() {
-        guard let model = loadedVisionModel else { return }
-        let freedGB = Float(model.fileSizeBytes) / 1e9
-        currentMemoryUsageGB -= freedGB
-        loadedVisionModel = nil
-        if loadedTextModel == nil {
-            Task { await engine.unloadModel() }
-        }
-        print("[ModelManager] Unloaded vision model: \(model.name)")
-    }
-    
-    func unloadAll() {
-        unloadTextModel()
-        unloadVisionModel()
+        loadedModel = nil
         idleTimer?.cancel()
         Task { await engine.unloadModel() }
-        print("[ModelManager] All models unloaded")
+        print("[ModelManager] Unloaded \(model.name)")
     }
     
     // MARK: - Memory Budget
     
     func canLoadModel(sizeGB: Float) -> Bool {
-        let current = loadedTextModel.map { Float($0.fileSizeBytes) / 1e9 } ?? 0
-        let vision = loadedVisionModel.map { Float($0.fileSizeBytes) / 1e9 } ?? 0
-        return current + vision + sizeGB <= maxMemoryBudgetGB
+        sizeGB <= maxMemoryBudgetGB
     }
     
     func memoryUsage() -> Float {
         currentMemoryUsageGB
     }
     
-    // MARK: - Model Discovery
+    var memoryBudgetGB: Float { maxMemoryBudgetGB }
     
-    /// Scan for available model files in the app sandbox
+    // MARK: - Model Discovery (MLX directories)
+    
+    /// Scan for available MLX model directories in the app sandbox.
+    /// MLX models are directories containing safetensors + config.json.
     func discoverModels() -> [ModelConfig] {
         var discovered: [ModelConfig] = []
         
@@ -209,27 +96,22 @@ actor ModelManager {
         }
         
         for template in ModelConfig.allModels {
-            let fileURL = modelsDirectory.appendingPathComponent(template.fileName)
-            if FileManager.default.fileExists(atPath: fileURL.path) {
+            let modelDir = modelsDirectory.appendingPathComponent(template.directoryName, isDirectory: true)
+            if isValidMLXModelDirectory(modelDir) {
                 var config = template
-                // Update with actual file size
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) {
-                    let actualSize = (attrs[.size] as? Int64) ?? template.fileSizeBytes
-                    config = ModelConfig(
-                        id: template.id,
-                        name: template.name,
-                        fileName: template.fileName,
-                        fileSizeBytes: actualSize,
-                        parameterCount: template.parameterCount,
-                        quant: template.quant,
-                        modelType: template.modelType,
-                        tier: template.tier,
-                        contextSize: template.contextSize,
-                        isLoaded: isModelLoaded(template.id),
-                        loadTimeSeconds: nil,
-                        mmprojFileName: template.mmprojFileName
-                    )
-                }
+                let actualSize = directorySize(modelDir)
+                config = ModelConfig(
+                    id: template.id,
+                    name: template.name,
+                    directoryName: template.directoryName,
+                    fileSizeBytes: actualSize > 0 ? actualSize : template.fileSizeBytes,
+                    parameterCount: template.parameterCount,
+                    quant: template.quant,
+                    modelType: template.modelType,
+                    tier: template.tier,
+                    contextSize: template.contextSize,
+                    isLoaded: loadedModel?.id == template.id
+                )
                 discovered.append(config)
             }
         }
@@ -237,73 +119,91 @@ actor ModelManager {
         return discovered
     }
     
-    /// Check if a model is currently loaded
-    func isModelLoaded(_ modelId: String) -> Bool {
-        loadedTextModel?.id == modelId || loadedVisionModel?.id == modelId
+    /// Check if a directory is a valid MLX model directory.
+    private func isValidMLXModelDirectory(_ dir: URL) -> Bool {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else {
+            return false
+        }
+        
+        // Must contain at least one .safetensors file and a config.json
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
+            return false
+        }
+        
+        let hasSafetensors = contents.contains { $0.hasSuffix(".safetensors") }
+        let hasConfig = contents.contains { $0 == "config.json" }
+        return hasSafetensors && hasConfig
+    }
+    
+    /// Calculate total size of a directory.
+    private func directorySize(_ dir: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: dir,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            if let attrs = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
+               let size = attrs.fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
     }
     
     // MARK: - Model Validation
     
-    /// Validate a model file before import
-    func validateModelFile(url: URL) -> Bool {
-        // Check extension
-        let validExtensions = ["gguf", "mlx", "mlmodelc"]
-        guard validExtensions.contains(url.pathExtension.lowercased()) else {
-            return false
+    /// Validate a model directory or file before import.
+    func validateModel(at url: URL) -> Bool {
+        // Check if it's a directory (MLX model) or single file
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+            return isValidMLXModelDirectory(url)
         }
         
-        // Check size range (500MB - 6GB)
+        // Single file — check size range
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let fileSize = attrs[.size] as? Int64 else {
             return false
         }
         
         let sizeGB = Double(fileSize) / 1e9
-        guard sizeGB >= 0.5 && sizeGB <= 6.0 else {
-            return false
-        }
-        
-        // For GGUF: validate magic bytes
-        if url.pathExtension.lowercased() == "gguf" {
-            return validateGGUFHeader(url: url)
-        }
-        
-        return true
-    }
-    
-    private func validateGGUFHeader(url: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return false
-        }
-        defer { try? handle.close() }
-        
-        guard let data = try? handle.read(upToCount: 4),
-              data.count == 4 else {
-            return false
-        }
-        
-        // GGUF magic: 0x47 0x47 0x55 0x46 ("GGUF")
-        return data[0] == 0x47 && data[1] == 0x47 && data[2] == 0x55 && data[3] == 0x46
+        return sizeGB >= 0.1 && sizeGB <= 6.0
     }
     
     // MARK: - Import
     
-    /// Import a model from external URL to app sandbox
-    func importModel(from sourceURL: URL, config: ModelConfig) async throws {
-        // Create models directory if needed
+    /// Import an MLX model directory from external URL to app sandbox.
+    func importModel(from sourceURL: URL, directoryName: String) async throws {
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
         
-        let destinationURL = modelsDirectory.appendingPathComponent(config.fileName)
+        let destDir = modelsDirectory.appendingPathComponent(directoryName, isDirectory: true)
         
-        // Remove existing file if present
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
+        // Remove existing if present
+        if FileManager.default.fileExists(atPath: destDir.path) {
+            try FileManager.default.removeItem(at: destDir)
         }
         
-        // Copy file
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        // Copy directory
+        try FileManager.default.copyItem(at: sourceURL, to: destDir)
         
-        print("[ModelManager] Imported \(config.fileName) to Models directory")
+        print("[ModelManager] Imported \(directoryName) to Models directory")
+    }
+    
+    /// Import a single safetensors file (legacy / simple import)
+    func importFile(from sourceURL: URL, fileName: String) async throws {
+        try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+        
+        let destURL = modelsDirectory.appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            try FileManager.default.removeItem(at: destURL)
+        }
+        
+        try FileManager.default.copyItem(at: sourceURL, to: destURL)
+        print("[ModelManager] Imported \(fileName)")
     }
     
     // MARK: - Idle Timer
@@ -313,13 +213,8 @@ actor ModelManager {
         idleTimer = Task {
             try? await Task.sleep(for: .seconds(idleUnloadSeconds))
             guard !Task.isCancelled else { return }
-            print("[ModelManager] Idle timeout — unloading moderate models")
-            if loadedTextModel?.tier == .moderate {
-                unloadTextModel()
-            }
-            if loadedVisionModel?.tier == .moderate {
-                unloadVisionModel()
-            }
+            print("[ModelManager] Idle timeout — unloading model")
+            unloadCurrentModel()
         }
     }
 }
@@ -328,16 +223,13 @@ actor ModelManager {
 
 enum ModelError: LocalizedError {
     case noModelForTier(RoutingTier)
-    case noVLMForTier(RoutingTier)
     case insufficientMemory(needed: Float, available: Float)
     case importFailed(String)
     
     var errorDescription: String? {
         switch self {
         case .noModelForTier(let tier):
-            return "No text model available for \(tier.label) tier"
-        case .noVLMForTier(let tier):
-            return "No vision model available for \(tier.label) tier"
+            return "No model available for \(tier.label) tier"
         case .insufficientMemory(let needed, let available):
             return "Need \(String(format: "%.1f", needed))GB but only \(String(format: "%.1f", available))GB available"
         case .importFailed(let reason):
