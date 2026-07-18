@@ -319,8 +319,8 @@ struct OnboardingView: View {
                     BulletPoint(text: "Chat with on-device AI — fully offline")
                     BulletPoint(text: "Analyze photos with Vision mode")
                     BulletPoint(text: "Use voice input & output")
-                    BulletPoint(text: "Switch between Fast / Moderate tiers")
-                    BulletPoint(text: "Add Grok API key for Pro tier")
+                    BulletPoint(text: "Fast tier loads automatically for chat")
+                    BulletPoint(text: "Optional Grok API key for cloud Pro")
                 }
                 .padding(.top, 8)
             }
