@@ -9,19 +9,43 @@ jobs:
   build:
     name: Build IPA (FREE macOS runner)
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Show Xcode version
+      # NOTE: Do not use case-sensitive `grep ios` — SDK lines say "iOS" / "iphoneos".
+      # A failing grep exits 1 under bash -e and aborts the job before the real build.
+      - name: Select Xcode and show versions
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          set -uo pipefail
+          echo "=== /Applications Xcode apps ==="
+          ls -d /Applications/Xcode*.app 2>/dev/null || ls /Applications | head -40
+
+          SELECTED=""
+          if [ -d /Applications/Xcode.app/Contents/Developer ]; then
+            SELECTED=/Applications/Xcode.app/Contents/Developer
+          else
+            # Prefer highest versioned Xcode_*.app on the runner image
+            CAND=$(ls -d /Applications/Xcode_*.app/Contents/Developer 2>/dev/null | sort -V | tail -1 || true)
+            if [ -n "$CAND" ]; then
+              SELECTED="$CAND"
+            fi
+          fi
+
+          if [ -n "$SELECTED" ]; then
+            echo "Selecting: $SELECTED"
+            sudo xcode-select -s "$SELECTED"
+          else
+            echo "WARN: no Xcode.app tree found; using current xcode-select path"
+          fi
+
+          echo "DEVELOPER_DIR=$(xcode-select -p)"
           xcodebuild -version
           swift --version
-          echo "---"
-          xcodebuild -showsdks 2>/dev/null | grep ios
+          echo "=== iOS SDKs ==="
+          xcodebuild -showsdks 2>/dev/null | grep -i iphone || echo "(no iphone SDK lines listed)"
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -41,6 +65,7 @@ jobs:
 
       - name: Resolve SPM dependencies
         run: |
+          set -uo pipefail
           xcodebuild \
             -project "ALIVE APPLE.xcodeproj" \
             -scheme "ALIVE APPLE" \
@@ -48,10 +73,17 @@ jobs:
             -resolvePackageDependencies \
             -clonedSourcePackagesDirPath .build \
             -disablePackageRepositoryCache \
-            SWIFT_STRICT_CONCURRENCY=minimal 2>&1 | tail -50
+            SWIFT_STRICT_CONCURRENCY=minimal 2>&1 | tee /tmp/spm-resolve.log | tail -80
+          # Do not fail the job only because tail closed the pipe early
+          if grep -qiE 'error:|failed|Could not resolve' /tmp/spm-resolve.log; then
+            echo "SPM resolve reported errors — continuing to archive (may still build if cached)"
+          fi
 
       - name: Build archive (unsigned)
         run: |
+          set -uo pipefail
+          mkdir -p ./build
+          set +e
           xcodebuild \
             -project "ALIVE APPLE.xcodeproj" \
             -scheme "ALIVE APPLE" \
@@ -65,7 +97,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
             SWIFT_STRICT_CONCURRENCY=minimal \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tail -100
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tee /tmp/xcodebuild-archive.log
+          XC=${PIPESTATUS[0]}
+          set -e
+          echo "xcodebuild exit=$XC"
+          tail -120 /tmp/xcodebuild-archive.log
+          # Surface compile errors clearly
+          grep -E 'error:|fatal error:|BUILD FAILED' /tmp/xcodebuild-archive.log | tail -40 || true
+          exit $XC
 
       - name: Debug archive structure
         if: success()
@@ -101,8 +140,7 @@ jobs:
         if: always()
         run: |
           echo "========================================="
-          echo "  ALIVE APPLE — Build Complete!"
+          echo "  ALIVE APPLE - CI job finished"
           echo "========================================="
-          echo ""
-          echo "  Download IPA from Artifacts above."
-          echo "  Install AltStore on iPhone → sideload IPA."
+          echo "  Download IPA from Artifacts if build succeeded."
+          echo "  Install with AltStore / Sideloadly on iPhone."
