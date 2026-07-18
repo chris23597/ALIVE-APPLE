@@ -34,6 +34,11 @@ final class AppState {
         isOnline && hasAPIKey
     }
     
+    // MARK: - RAG State
+    var ragChunkCount: Int = 0
+    var ragEmbeddingCoverage: Double = 0.0
+    var ragIsIndexing: Bool = false
+    
     // MARK: - UI State
     var selectedTab: Tab = .chat
     var showSettings: Bool = false

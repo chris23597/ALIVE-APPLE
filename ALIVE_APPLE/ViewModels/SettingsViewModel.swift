@@ -18,12 +18,24 @@ final class SettingsViewModel {
     var autoPlayVoice: Bool = false
     var hapticFeedback: Bool = true
     var defaultTemperature: Float = 0.7
-    var maxTokens: Int = 4096
+    var maxTokens: Int = 2048
     var routingMode: AppState.RoutingMode = .auto
+    
+    // MARK: - RAG State
+    var ragChunkCount: Int = 0
+    var ragSourceCount: Int = 0
+    var ragSources: [String] = []
+    var ragBackend: String = "bm25"
+    var ragEmbeddingCoverage: Double = 0.0
+    var ragIsIndexing: Bool = false
+    var showFileImporter: Bool = false
+    var showRemoveConfirm: Bool = false
+    var ragError: String?
     
     // MARK: - Services
     
     private let keychain = KeychainManager()
+    var ragService: RAGService?
     
     // MARK: - Initialization
     
@@ -41,13 +53,19 @@ final class SettingsViewModel {
         maxTokens = UserDefaults.standard.integer(forKey: "max_tokens")
         
         if defaultTemperature == 0 { defaultTemperature = 0.7 }
-        if maxTokens == 0 { maxTokens = 4096 }
+        if maxTokens == 0 { maxTokens = 2048 }
+        
+        // Load RAG status
+        await loadRAGStatus()
     }
     
     // MARK: - API Key Management
     
     func saveAPIKey() async {
-        guard !apiKey.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        guard !apiKey.trimmingCharacters(in: .whitespaces).isEmpty else {
+            verificationError = "Please enter an API key"
+            return
+        }
         
         isVerifying = true
         verificationError = nil
@@ -96,6 +114,54 @@ final class SettingsViewModel {
     func toggleHapticFeedback() {
         hapticFeedback.toggle()
         savePreference(key: "haptic_feedback", value: hapticFeedback)
+    }
+    
+    // MARK: - RAG Management
+    
+    func loadRAGStatus() async {
+        guard let rag = ragService else { return }
+        ragChunkCount = await rag.chunkCount()
+        ragSources = await rag.documentSources()
+        ragSourceCount = ragSources.count
+        ragBackend = await rag.retrievalBackend
+        ragEmbeddingCoverage = await rag.embeddingCoverage
+    }
+    
+    func ingestDocument(url: URL) async {
+        guard let rag = ragService else { return }
+        ragIsIndexing = true
+        ragError = nil
+        do {
+            let count = try await rag.ingestDocument(url: url)
+            ragChunkCount = await rag.chunkCount()
+            ragSources = await rag.documentSources()
+            ragSourceCount = ragSources.count
+            ragBackend = await rag.retrievalBackend
+            ragEmbeddingCoverage = await rag.embeddingCoverage
+            print("[SettingsVM] Ingested \(count) chunks from \(url.lastPathComponent)")
+        } catch {
+            ragError = "Failed to import: \(error.localizedDescription)"
+            print("[SettingsVM] Import error: \(error)")
+        }
+        ragIsIndexing = false
+    }
+    
+    func removeDocument(sourceName: String) async {
+        guard let rag = ragService else { return }
+        await rag.removeDocument(sourceName: sourceName)
+        ragChunkCount = await rag.chunkCount()
+        ragSources = await rag.documentSources()
+        ragSourceCount = ragSources.count
+        ragEmbeddingCoverage = await rag.embeddingCoverage
+    }
+    
+    func clearAllDocuments() async {
+        guard let rag = ragService else { return }
+        await rag.clearAll()
+        ragChunkCount = 0
+        ragSources = []
+        ragSourceCount = 0
+        ragEmbeddingCoverage = 0.0
     }
     
     // MARK: - Data Management

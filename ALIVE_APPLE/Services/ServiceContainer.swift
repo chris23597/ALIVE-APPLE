@@ -21,6 +21,14 @@ final class ServiceContainer {
     init() {
         // ModelManager now requires an InferenceEngine to delegate loading to
         modelManager = ModelManager(engine: inferenceEngine)
+        
+        // Wire embedding provider: RAG uses the loaded model's llama_get_embeddings()
+        ragService.embeddingProvider = { [inferenceEngine] text in
+            try await inferenceEngine.embedText(text)
+        }
+        
+        // Load previously ingested documents on startup
+        Task { try? await ragService.loadChunks() }
     }
     
     /// Shared model-loading state (visible across all views)

@@ -365,6 +365,126 @@ actor InferenceEngine {
     }
     #endif
     
+    // MARK: - Embedding Generation
+    
+    /// Generate a semantic embedding vector for the given text using the loaded model.
+    /// Uses `llama_get_embeddings()` with mean pooling + L2 normalization.
+    /// Falls back to a deterministic pseudo-embedding when LlamaSwift is not linked.
+    func embedText(_ text: String) async throws -> [Float] {
+        #if canImport(LlamaSwift)
+        guard let context = llamaContext, let model = llamaModel else {
+            throw InferenceError.modelLoadFailed("No model loaded for embedding generation")
+        }
+        
+        let vocab = llama_model_get_vocab(model)
+        let nEmbed = Int(llama_n_embd(model))
+        guard nEmbed > 0 else {
+            throw InferenceError.modelLoadFailed("Invalid embedding dimension")
+        }
+        
+        // Tokenize input
+        let maxTokenCount = 512
+        var tokens = [llama_token](repeating: 0, count: maxTokenCount)
+        let tokenCount = llama_tokenize(
+            vocab,
+            text,
+            Int32(text.utf8.count),
+            &tokens,
+            Int32(maxTokenCount),
+            true,
+            true
+        )
+        guard tokenCount > 0 else {
+            throw InferenceError.tokenizationFailed
+        }
+        
+        let promptTokens = Array(tokens.prefix(Int(tokenCount)))
+        
+        // Decode prompt (no sampling needed)
+        let nBatches = (promptTokens.count + 511) / 512
+        for batchIdx in 0..<nBatches {
+            let start = batchIdx * 512
+            let end = min(start + 512, promptTokens.count)
+            let batchTokens = Array(promptTokens[start..<end])
+            
+            var batch = llama_batch_init(Int32(batchTokens.count), 0, 1)
+            defer { llama_batch_free(batch) }
+            
+            batch.n_tokens = Int32(batchTokens.count)
+            for i in 0..<batchTokens.count {
+                batch.token[i] = batchTokens[i]
+                batch.pos[i] = Int32(start + i)
+                batch.n_seq_id[i] = 1
+                if let seqIds = batch.seq_id?[i] {
+                    batch.seq_id?[i]?[0] = 0
+                }
+            }
+            
+            guard llama_decode(context, batch) == 0 else {
+                throw InferenceError.modelLoadFailed("llama_decode failed during embedding")
+            }
+        }
+        
+        // Extract embeddings with mean pooling
+        guard let embeds = llama_get_embeddings(context) else {
+            throw InferenceError.modelLoadFailed("llama_get_embeddings returned nil")
+        }
+        
+        let nt = Int(tokenCount)
+        var pooled = [Float](repeating: 0, count: nEmbed)
+        for i in 0..<nt {
+            for j in 0..<nEmbed {
+                pooled[j] += embeds[i * nEmbed + j]
+            }
+        }
+        for j in 0..<nEmbed {
+            pooled[j] /= Float(nt)
+        }
+        
+        // L2 normalize
+        var norm: Float = 0
+        for v in pooled { norm += v * v }
+        norm = sqrt(norm)
+        if norm > 0 {
+            for j in 0..<nEmbed {
+                pooled[j] /= norm
+            }
+        }
+        
+        return pooled
+        #else
+        // Deterministic pseudo-embedding for testing without LlamaSwift
+        return Self.pseudoEmbed(text, dimensions: 384)
+        #endif
+    }
+    
+    /// Deterministic pseudo-embedding for testing when llama.cpp is not linked.
+    /// Produces an L2-normalized vector from the text hash.
+    nonisolated private static func pseudoEmbed(_ text: String, dimensions: Int) -> [Float] {
+        let cleaned = text.lowercased()
+        var vector = [Float](repeating: 0, count: dimensions)
+        let chars = Array(cleaned.utf8)
+        for (i, byte) in chars.enumerated() {
+            let idx = (i * 7 + Int(byte) * 13) % dimensions
+            vector[idx] += Float(byte) / 255.0
+        }
+        // Smooth with nearby dimensions
+        var smoothed = vector
+        for i in 1..<(dimensions - 1) {
+            smoothed[i] = vector[i - 1] * 0.25 + vector[i] * 0.5 + vector[i + 1] * 0.25
+        }
+        // L2 normalize
+        var norm: Float = 0
+        for v in smoothed { norm += v * v }
+        norm = sqrt(norm)
+        if norm > 0 {
+            for j in 0..<dimensions {
+                smoothed[j] /= norm
+            }
+        }
+        return smoothed
+    }
+    
     // MARK: - Context Management
     
     func trimContext(messages: [ChatMessage]) -> [ChatMessage] {

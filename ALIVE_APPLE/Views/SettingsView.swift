@@ -1,8 +1,10 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings view — API key, preferences, data management
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(ServiceContainer.self) private var services
     @State private var settingsVM = SettingsViewModel()
     @State private var showClearConfirmation: Bool = false
     
@@ -115,6 +117,139 @@ struct SettingsView: View {
                 }
             }
             
+            // MARK: - RAG Documents
+            Section {
+                // Status row
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Local Documents")
+                            .font(.body)
+                        if settingsVM.ragSourceCount > 0 {
+                            Text("\(settingsVM.ragSourceCount) document\(settingsVM.ragSourceCount == 1 ? "" : "s") · \(settingsVM.ragChunkCount) chunks")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("No documents indexed")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Image(systemName: settingsVM.ragSourceCount > 0 ? "doc.text.fill" : "doc.text")
+                            .foregroundColor(settingsVM.ragSourceCount > 0 ? .green : .secondary)
+                        Text(settingsVM.ragBackend)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15))
+                            .cornerRadius(4)
+                    }
+                }
+                
+                // Embedding coverage bar
+                if settingsVM.ragChunkCount > 0 && settingsVM.ragEmbeddingCoverage > 0 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Semantic index: \(Int(settingsVM.ragEmbeddingCoverage * 100))%")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        ProgressView(value: settingsVM.ragEmbeddingCoverage)
+                            .tint(settingsVM.ragEmbeddingCoverage >= 1.0 ? .green : .orange)
+                    }
+                }
+                
+                // Add document button
+                Button {
+                    settingsVM.showFileImporter = true
+                } label: {
+                    Label("Add Document", systemImage: "plus.doc")
+                }
+                .disabled(settingsVM.ragIsIndexing)
+                
+                if settingsVM.ragIsIndexing {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Indexing document...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if let error = settingsVM.ragError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+                
+                // Document list
+                if !settingsVM.ragSources.isEmpty {
+                    ForEach(settingsVM.ragSources, id: \.self) { source in
+                        HStack {
+                            Image(systemName: "doc.text")
+                                .foregroundColor(.secondary)
+                            Text(source)
+                                .font(.caption)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                Task { await settingsVM.removeDocument(sourceName: source) }
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
+                    }
+                    
+                    Button(role: .destructive) {
+                        settingsVM.showRemoveConfirm = true
+                    } label: {
+                        Label("Clear All Documents", systemImage: "trash")
+                    }
+                    .confirmationDialog(
+                        "Clear all indexed documents?",
+                        isPresented: $settingsVM.showRemoveConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Clear All", role: .destructive) {
+                            Task { await settingsVM.clearAllDocuments() }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This will remove all indexed document chunks. Imported files on disk are not deleted.")
+                    }
+                }
+            } header: {
+                Text("RAG — Local Documents")
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Supports PDF, TXT, and Markdown files.")
+                    if settingsVM.ragBackend == "hybrid" {
+                        Text("Hybrid search: BM25 keyword + semantic embeddings from loaded model.")
+                            .foregroundColor(.green)
+                    } else {
+                        Text("BM25 keyword search. Semantic search enabled when a model is loaded.")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .fileImporter(
+                isPresented: $settingsVM.showFileImporter,
+                allowedContentTypes: [.pdf, .plainText, UTType(filenameExtension: "md") ?? .plainText],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        Task { await settingsVM.ingestDocument(url: url) }
+                    }
+                case .failure(let error):
+                    settingsVM.ragError = error.localizedDescription
+                }
+            }
+            
             // MARK: - Data
             Section("Data") {
                 Button(action: {
@@ -153,7 +288,7 @@ struct SettingsView: View {
             Section("About") {
                 LabeledContent("Version", value: "1.0.0")
                 LabeledContent("Target", value: "iPhone 16 (A18, 8GB)")
-                LabeledContent("Engine", value: "llama.cpp + BM25 RAG (no CoreML required)")
+                LabeledContent("Engine", value: "llama.cpp + Hybrid RAG (BM25 + embeddings)")
                 
                 Link(destination: URL(string: "https://aliveapple.com/privacy")!) {
                     Label("Privacy Policy", systemImage: "hand.raised.fill")
@@ -162,6 +297,7 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .onAppear {
+            settingsVM.ragService = services.ragService
             Task { await settingsVM.loadSettings() }
         }
     }
@@ -171,6 +307,7 @@ struct SettingsView: View {
     NavigationStack {
         SettingsView()
             .environment(AppState())
+            .environment(ServiceContainer())
             .preferredColorScheme(.dark)
     }
 }

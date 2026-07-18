@@ -187,3 +187,138 @@ final class RoutingDecisionTests: XCTestCase {
         XCTAssertEqual(decision.confidencePercent, 93)
     }
 }
+
+// MARK: - Cosine Similarity Tests
+
+final class CosineSimilarityTests: XCTestCase {
+    
+    func testIdenticalVectors() {
+        let vec: [Float] = [1, 0, 0]
+        let sim = RAGService.cosineSimilarity(vec, vec)
+        XCTAssertEqual(sim, 1.0, accuracy: 0.001)
+    }
+    
+    func testOrthogonalVectors() {
+        let a: [Float] = [1, 0, 0]
+        let b: [Float] = [0, 1, 0]
+        let sim = RAGService.cosineSimilarity(a, b)
+        XCTAssertEqual(sim, 0.0, accuracy: 0.001)
+    }
+    
+    func testOppositeVectors() {
+        let a: [Float] = [1, 0, 0]
+        let b: [Float] = [-1, 0, 0]
+        let sim = RAGService.cosineSimilarity(a, b)
+        XCTAssertEqual(sim, -1.0, accuracy: 0.001)
+    }
+    
+    func testNormalizedVectors() {
+        // Two L2-normalized vectors at 45 degrees
+        let a: [Float] = [0.7071, 0.7071]
+        let b: [Float] = [1.0, 0.0]
+        let sim = RAGService.cosineSimilarity(a, b)
+        XCTAssertEqual(sim, 0.7071, accuracy: 0.01)
+    }
+    
+    func testEmptyVectors() {
+        XCTAssertEqual(RAGService.cosineSimilarity([], []), 0.0)
+    }
+    
+    func testMismatchedDimensions() {
+        XCTAssertEqual(RAGService.cosineSimilarity([1.0], [1.0, 2.0]), 0.0)
+    }
+    
+    func testClampedOutput() {
+        // Even with unnormalized vectors, output should be in [-1, 1]
+        let a: [Float] = [100, 200, 300]
+        let b: [Float] = [100, 200, 300]
+        let sim = RAGService.cosineSimilarity(a, b)
+        XCTAssertGreaterThanOrEqual(sim, -1.0)
+        XCTAssertLessThanOrEqual(sim, 1.0)
+    }
+}
+
+// MARK: - Pseudo Embedding Tests
+
+final class PseudoEmbeddingTests: XCTestCase {
+    
+    /// Use embedText which falls back to pseudoEmbed when LlamaSwift is not linked
+    func testEmbeddingGeneration() async throws {
+        let engine = InferenceEngine()
+        let vec = try await engine.embedText("Hello world")
+        XCTAssertFalse(vec.isEmpty)
+        XCTAssertEqual(vec.count, 384, "Pseudo embedding should have 384 dimensions")
+    }
+    
+    func testEmbeddingIsDeterministic() async throws {
+        let engine = InferenceEngine()
+        let a = try await engine.embedText("test text")
+        let b = try await engine.embedText("test text")
+        XCTAssertEqual(a, b, "Same text should produce same embedding")
+    }
+    
+    func testDifferentTextDifferentEmbedding() async throws {
+        let engine = InferenceEngine()
+        let a = try await engine.embedText("hello")
+        let b = try await engine.embedText("world")
+        // They should differ (different hash input)
+        XCTAssertNotEqual(a, b)
+    }
+    
+    func testEmbeddingIsNormalized() async throws {
+        let engine = InferenceEngine()
+        let vec = try await engine.embedText("some text for testing")
+        var norm: Float = 0
+        for v in vec { norm += v * v }
+        norm = sqrt(norm)
+        XCTAssertEqual(norm, 1.0, accuracy: 0.01, "Embedding should be L2-normalized")
+    }
+}
+
+// MARK: - DocumentChunk Codable Tests
+
+final class DocumentChunkTests: XCTestCase {
+    
+    func testEncodeDecodeRoundtrip() throws {
+        let chunk = DocumentChunk(
+            id: "test-1",
+            content: "Hello world",
+            sourceName: "test.txt",
+            chunkIndex: 0,
+            termFrequencies: ["hello": 1, "world": 1],
+            length: 2,
+            embedding: [0.5, 0.3, 0.8]
+        )
+        
+        let data = try JSONEncoder().encode(chunk)
+        let decoded = try JSONDecoder().decode(DocumentChunk.self, from: data)
+        
+        XCTAssertEqual(decoded.id, chunk.id)
+        XCTAssertEqual(decoded.content, chunk.content)
+        XCTAssertEqual(decoded.sourceName, chunk.sourceName)
+        XCTAssertEqual(decoded.embedding, [0.5, 0.3, 0.8])
+    }
+    
+    func testDecodeLegacyChunkWithoutEmbedding() throws {
+        let json = """
+        {"id":"old-1","content":"old content","sourceName":"old.txt","chunkIndex":0,"termFrequencies":{},"length":2}
+        """
+        let data = json.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(DocumentChunk.self, from: data)
+        
+        XCTAssertNil(decoded.embedding, "Legacy chunks should have nil embedding")
+        XCTAssertEqual(decoded.content, "old content")
+    }
+    
+    func testLengthAutoComputed() {
+        let chunk = DocumentChunk(
+            id: "t",
+            content: "test",
+            sourceName: "s",
+            chunkIndex: 0,
+            termFrequencies: ["a": 3, "b": 2],
+            length: 0
+        )
+        XCTAssertEqual(chunk.length, 5, "Length should be auto-computed from termFrequencies sum")
+    }
+}
