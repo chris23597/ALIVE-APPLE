@@ -1,4 +1,8 @@
 name: ALIVE APPLE
+packages:
+  llama.swift:
+    url: https://github.com/mattt/llama.swift
+    majorVersion: 2.10066.0
 options:
   bundleIdPrefix: com.aliveapple
   deploymentTarget:
@@ -25,6 +29,9 @@ targets:
   ALIVE APPLE:
     type: application
     platform: iOS
+    dependencies:
+      - package: llama.swift
+        product: LlamaSwift
     sources:
       - path: ALIVE_APPLE
         type: group
@@ -50,3 +57,12 @@ targets:
         SWIFT_COMPILATION_MODE: incremental
       Release:
         SWIFT_OPTIMIZATION_LEVEL: "-Osize"
+  
+  ALIVE APPLE Tests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ALIVE_APPLE/Tests
+        type: group
+    dependencies:
+      - target: ALIVE APPLE
