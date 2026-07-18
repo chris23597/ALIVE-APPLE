@@ -25,7 +25,7 @@ final class ServiceContainer {
         }
         
         // Memory gate
-        guard memoryMonitor.pressureLevel != .critical else {
+        guard memoryMonitor.currentPressure != .critical else {
             throw ModelError.insufficientMemory(needed: 3.0, available: 0)
         }
         
@@ -51,7 +51,7 @@ final class ServiceContainer {
             throw ModelError.noModelForTier(.fast)
         }
         
-        guard memoryMonitor.pressureLevel != .critical else {
+        guard memoryMonitor.currentPressure != .critical else {
             throw ModelError.insufficientMemory(needed: 2.0, available: 0)
         }
         
@@ -73,12 +73,12 @@ final class ServiceContainer {
     
     /// Thermal gate: returns false if inference should be paused.
     var canRunInference: Bool {
-        thermalMonitor.state != .critical && thermalMonitor.state != .serious
+        thermalMonitor.currentState != .critical && thermalMonitor.currentState != .serious
     }
     
     /// Memory check: returns true if there's room for another model.
     var hasMemoryHeadroom: Bool {
-        memoryMonitor.pressureLevel != .critical && memoryMonitor.pressureLevel != .warning
+        memoryMonitor.currentPressure != .critical && memoryMonitor.currentPressure != .warning
     }
     
     func unloadModel() {

@@ -1,12 +1,7 @@
 import SwiftUI
 
-/// Dashboard and model-import view combined.
-///
-/// USB import flow:
-/// 1. User taps "Browse Files" or "Browse Folder"
-/// 2. iOS document picker opens (Files app, iCloud, USB drives)
-/// 3. Selected models are scanned and displayed
-/// 4. User confirms import
+/// Model management and import view — v1 simplified.
+/// Single model, USB import via document picker, model status display.
 struct ModelImportView: View {
     @Environment(AppState.self) private var appState
     @Environment(ServiceContainer.self) private var services
@@ -16,107 +11,101 @@ struct ModelImportView: View {
     var body: some View {
         List {
             // MARK: - Current Status
-            Section("Current Tier") {
+            Section("Current Model") {
                 HStack {
                     Circle()
-                        .fill(modelVM.currentTier.color)
+                        .fill(services.isModelLoaded ? Color.green : Color.secondary)
                         .frame(width: 12, height: 12)
-                    Text(modelVM.currentTier.label)
+                    Text(services.loadedModel?.name ?? "No Model")
                         .font(.headline)
                     Spacer()
                     Text(modelVM.memoryUsageGB > 0
                          ? String(format: "%.1f GB used", modelVM.memoryUsageGB)
-                         : "No models loaded")
+                         : "No model loaded")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 
-                // Memory gauge
                 if modelVM.memoryUsageGB > 0 {
                     MemoryGaugeView(usedGB: modelVM.memoryUsageGB)
                         .frame(height: 40)
                 }
             }
             
-            // MARK: - Tier Selection
-            Section("Select Tier") {
-                ForEach(RoutingTier.allCases, id: \.self) { tier in
-                    Button(action: {
-                        Task { await modelVM.setTier(tier) }
-                    }) {
-                        HStack {
-                            Image(systemName: tier.systemImage)
-                                .foregroundColor(tier.color)
-                                .frame(width: 28)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(tier.label)
-                                    .font(.body)
-                                    .foregroundColor(.primary)
-                                Text(tier.description)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            if modelVM.currentTier == tier {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(tier.color)
-                            }
+            // MARK: - Model Actions
+            Section("Load Model") {
+                Button(action: { Task { await modelVM.loadTextModel() } }) {
+                    HStack {
+                        Image(systemName: "brain.head.profile")
+                            .foregroundColor(.green)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Load Phi-4 Mini 3.8B")
+                                .font(.body)
+                            Text("Text model · ~3GB · Fast responses")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Button(action: { Task { await modelVM.loadVisionModel() } }) {
+                    HStack {
+                        Image(systemName: "eye.fill")
+                            .foregroundColor(.blue)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Load SmolVLM2 2.2B")
+                                .font(.body)
+                            Text("Vision model · ~1.8GB · Image analysis")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
             }
             
-            // MARK: - Model Import (Document Picker)
+            // MARK: - Model Import
             Section("Import Models") {
-                VStack(spacing: 12) {
-                    // Browse buttons
-                    HStack(spacing: 16) {
-                        Button(action: { modelVM.showDocumentPicker = true }) {
-                            Label("Browse Files", systemImage: "doc.badge.plus")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        
-                        Button(action: { modelVM.showDirectoryPicker = true }) {
-                            Label("Browse Folder", systemImage: "folder.badge.plus")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    
-                    Text("Select .gguf, .mlx, or .mlmodelc model files from Files, iCloud, or a connected USB-C drive.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 4)
+                Button(action: { modelVM.showDocumentPicker = true }) {
+                    Label("Browse for Models", systemImage: "folder.badge.plus")
+                        .frame(maxWidth: .infinity)
                 }
-                .padding(.vertical, 4)
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                
+                Text("Select an MLX model directory containing .safetensors files and config.json from Files, iCloud, or a connected USB-C drive.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 4)
                 
                 // Scanning state
-                if modelVM.isScanningUSB {
+                if modelVM.isScanning {
                     HStack {
-                        ProgressView()
-                            .padding(.trailing, 8)
-                        Text("Scanning selected files...")
+                        ProgressView().padding(.trailing, 8)
+                        Text("Scanning...")
                             .foregroundColor(.secondary)
                     }
                 }
                 
                 // Discovered models
-                if !modelVM.discoveredUSBModels.isEmpty {
-                    ForEach(modelVM.discoveredUSBModels) { model in
-                        DiscoveredModelRow(
-                            model: model,
-                            isSelected: selectedModels.contains(model.id)
-                        ) {
-                            if selectedModels.contains(model.id) {
-                                selectedModels.remove(model.id)
-                            } else {
-                                selectedModels.insert(model.id)
+                if !modelVM.discoveredModels.isEmpty {
+                    ForEach(modelVM.discoveredModels) { model in
+                        HStack {
+                            Image(systemName: "shippingbox.fill")
+                                .foregroundColor(.secondary)
+                            VStack(alignment: .leading) {
+                                Text(model.fileName)
+                                    .font(.subheadline)
+                                Text(model.formattedSize)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if let config = model.matchedConfig {
+                                Text(config.name)
+                                    .font(.caption)
+                                    .foregroundColor(.green)
                             }
                         }
                     }
@@ -132,23 +121,13 @@ struct ModelImportView: View {
                     }
                 }
                 
-                // Import button (shown when models are discovered and not currently importing)
-                if !modelVM.discoveredUSBModels.isEmpty && !modelVM.isImporting {
-                    Button(action: {
-                        let selected = modelVM.discoveredUSBModels.filter { selectedModels.contains($0.id) }
-                        Task { await modelVM.importSelectedModels(selected) }
-                    }) {
-                        Label(
-                            selectedModels.isEmpty
-                            ? "Import All (\(modelVM.discoveredUSBModels.count) models)"
-                            : "Import Selected (\(selectedModels.count) models)",
-                            systemImage: "square.and.arrow.down.fill"
-                        )
+                // Import button
+                if !modelVM.discoveredModels.isEmpty && !modelVM.isImporting {
+                    Button(action: { Task { await modelVM.importAllDiscovered() } }) {
+                        Label("Import \(modelVM.discoveredModels.count) model(s)", systemImage: "square.and.arrow.down.fill")
                     }
-                    .disabled(selectedModels.isEmpty && modelVM.discoveredUSBModels.isEmpty)
                 }
                 
-                // Error display
                 if let error = modelVM.importError {
                     Text(error)
                         .font(.caption)
@@ -159,32 +138,37 @@ struct ModelImportView: View {
             // MARK: - Available Models
             Section("Imported Models") {
                 if modelVM.availableModels.isEmpty {
-                    VStack(spacing: 8) {
-                        Text("No models imported yet.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Text("Tap \"Browse Files\" to select model files from your device or USB drive.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    Text("No models imported yet. Use Browse to find MLX model directories.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 } else {
                     ForEach(modelVM.availableModels) { model in
-                        ModelRow(model: model)
+                        HStack {
+                            Image(systemName: model.modelType == .text ? "brain.head.profile" : "eye.fill")
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading) {
+                                Text(model.name)
+                                    .font(.subheadline)
+                                Text("\(model.parameterCount) · \(model.quant) · \(model.formattedSize)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if model.isLoaded {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                            }
+                        }
                     }
                 }
             }
             
             // MARK: - Actions
             Section {
-                Button(role: .destructive, action: {
-                    Task { await modelVM.unloadAllModels() }
-                }) {
-                    Label("Unload All Models", systemImage: "xmark.circle")
+                Button(role: .destructive, action: { modelVM.unloadModel() }) {
+                    Label("Unload Model", systemImage: "xmark.circle")
                 }
-                .disabled(modelVM.memoryUsageGB == 0)
+                .disabled(!services.isModelLoaded)
             }
         }
         .navigationTitle("Models")
@@ -192,123 +176,46 @@ struct ModelImportView: View {
             modelVM.services = services
             Task { await modelVM.loadModelState() }
         }
-        // Document picker for individual model files
         .sheet(isPresented: $modelVM.showDocumentPicker) {
             ModelDocumentPicker { urls in
-                Task { await modelVM.scanPickedFiles(urls: urls) }
-            }
-        }
-        // Directory picker for folder scanning
-        .sheet(isPresented: $modelVM.showDirectoryPicker) {
-            ModelDirectoryPicker { url in
-                Task { await modelVM.scanPickedDirectory(url: url) }
+                Task { await modelVM.scanPickedLocations(urls: urls) }
             }
         }
     }
 }
 
-// MARK: - Subviews
+// MARK: - Memory Gauge
 
 struct MemoryGaugeView: View {
     let usedGB: Float
-    let totalGB: Float = 8.0
-    
-    var usageColor: Color {
-        let pct = usedGB / totalGB
-        if pct > 0.85 { return .red }
-        if pct > 0.7 { return .orange }
-        return .green
-    }
+    private let totalGB: Float = 8.0
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 4) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white.opacity(0.1))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(usageColor)
-                        .frame(width: geo.size.width * CGFloat(usedGB / totalGB), height: 6)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.secondary.opacity(0.2))
+                        .frame(height: 8)
+                    
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(usedGB / totalGB > 0.7 ? Color.red : Color.green)
+                        .frame(width: geo.size.width * CGFloat(usedGB / totalGB), height: 8)
+                        .animation(.easeInOut, value: usedGB)
                 }
             }
+            .frame(height: 8)
+            
             HStack {
-                Text(String(format: "%.1f GB free", totalGB - usedGB))
+                Text(String(format: "%.1f GB", usedGB))
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(String(format: "%.1f / %.1f GB", usedGB, totalGB))
+                Text("\(String(format: "%.1f", totalGB)) GB total")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
         }
-    }
-}
-
-struct ModelRow: View {
-    let model: ModelConfig
-    
-    var body: some View {
-        HStack {
-            Image(systemName: model.modelType == .text ? "text.bubble" : "camera.macro")
-                .foregroundColor(model.tier.color)
-                .frame(width: 28)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.name)
-                    .font(.body)
-                Text("\(model.quant) · \(model.formattedSize)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(model.isLoaded ? Color.green : Color.secondary.opacity(0.3))
-                    .frame(width: 8, height: 8)
-                Text(model.isLoaded ? "Loaded" : "Ready")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-}
-
-struct DiscoveredModelRow: View {
-    let model: DiscoveredModel
-    let isSelected: Bool
-    let onTap: () -> Void
-    
-    var body: some View {
-        Button(action: onTap) {
-            HStack {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .blue : .secondary)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(model.fileName)
-                        .font(.body)
-                        .lineLimit(1)
-                    HStack(spacing: 8) {
-                        Text(model.formattedSize)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        if let tier = model.matchedConfig?.tier {
-                            Text(tier.label)
-                                .font(.caption2)
-                                .foregroundColor(tier.color)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(tier.color.opacity(0.15))
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
-            }
-        }
-        .buttonStyle(.plain)
     }
 }
 
