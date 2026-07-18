@@ -20,6 +20,8 @@ jobs:
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
           swift --version
+          echo "---"
+          xcodebuild -showsdks 2>/dev/null | grep ios
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -30,6 +32,24 @@ jobs:
           echo "Generated project:"
           ls -la *.xcodeproj
 
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild \
+            -project "ALIVE APPLE.xcodeproj" \
+            -scheme "ALIVE APPLE" \
+            -sdk iphoneos \
+            -resolvePackageDependencies \
+            -clonedSourcePackagesDirPath .build \
+            -disablePackageRepositoryCache \
+            SWIFT_STRICT_CONCURRENCY=minimal 2>&1 | tail -50
+
       - name: Build archive (unsigned)
         run: |
           xcodebuild \
@@ -38,26 +58,27 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -archivePath ./build/output.xcarchive \
+            -clonedSourcePackagesDirPath .build \
             archive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
             SWIFT_STRICT_CONCURRENCY=minimal \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO 2>&1 | tail -100
 
       - name: Debug archive structure
+        if: success()
         run: |
           echo "=== Archive structure ==="
           find ./build/output.xcarchive -maxdepth 5 -type f -o -type d | head -40
 
       - name: Package as IPA
+        if: success()
         run: |
-          echo "Looking for .app bundle..."
           APP=$(find ./build/output.xcarchive -name "*.app" -type d | head -1)
           if [ -z "$APP" ]; then
             echo "ERROR: No .app found in archive"
-            echo "Full archive contents:"
             find ./build/output.xcarchive -type f | head -20
             exit 1
           fi
@@ -69,6 +90,7 @@ jobs:
           ls -lh ALIVE_APPLE.ipa
 
       - name: Upload IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ALIVE_APPLE_iPhone16
@@ -76,6 +98,7 @@ jobs:
           retention-days: 90
 
       - name: Build Summary
+        if: always()
         run: |
           echo "========================================="
           echo "  ALIVE APPLE — Build Complete!"

@@ -1,4 +1,7 @@
 import Foundation
+import UIKit
+import AVFoundation
+import PhotosUI
 
 /// On-device vision service: image preprocessing + VLM dispatch.
 /// v1 simplified: single Fast tier, direct VLM analysis.
