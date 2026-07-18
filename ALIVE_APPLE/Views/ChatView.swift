@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// Main chat interface with streaming, empty state, and design tokens
+/// Main chat interface — v1 simplified.
+/// Single Fast tier, streaming responses, model status indicator.
 struct ChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(ServiceContainer.self) private var services
     @State private var chatVM = ChatViewModel()
     @State private var messageText: String = ""
-    @State private var isRecording: Bool = false
     @FocusState private var isInputFocused: Bool
     
-    private var tierColor: Color { chatVM.currentTier.color }
+    private var tierColor: Color { RoutingTier.fast.color }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -26,39 +26,6 @@ struct ChatView: View {
         .background(AliveTokens.bgDeepest.ignoresSafeArea())
         .navigationTitle("Chat")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    ForEach(RoutingTier.allCases, id: \.self) { tier in
-                        Button {
-                            chatVM.switchTier(tier)
-                        } label: {
-                            HStack {
-                                Text(tier.label)
-                                if chatVM.currentTier == tier {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                    
-                    Divider()
-                    
-                    Button {
-                        chatVM.enableAutoRouting()
-                    } label: {
-                        HStack {
-                            Text("Auto-Route")
-                            if appState.routingMode == .auto {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                } label: {
-                    TierBadge(tier: chatVM.currentTier)
-                }
-            }
-        }
         .toolbarBackground(AliveTokens.bgDeepest, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear {
@@ -67,7 +34,42 @@ struct ChatView: View {
         }
     }
     
-    // MARK: - Empty state (first impression)
+    // MARK: - Header
+    
+    private var headerView: some View {
+        HStack {
+            Text("ALIVE APPLE")
+                .font(.headline)
+                .foregroundColor(AliveTokens.textPrimary)
+            
+            Spacer()
+            
+            // Model status indicator
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(services.isModelLoaded ? Color.green : Color.secondary)
+                    .frame(width: 8, height: 8)
+                Text(services.loadedModel?.name ?? "No Model")
+                    .font(.caption)
+                    .foregroundColor(AliveTokens.textSecondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(AliveTokens.bgCard)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(AliveTokens.border, lineWidth: 1))
+        }
+        .padding(.horizontal, AliveTokens.lg)
+        .padding(.vertical, AliveTokens.sm)
+        .background(AliveTokens.bgDeepest.opacity(0.98))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AliveTokens.border)
+                .frame(height: 1)
+        }
+    }
+    
+    // MARK: - Empty State
     
     private var emptyState: some View {
         VStack(spacing: AliveTokens.lg) {
@@ -86,7 +88,7 @@ struct ChatView: View {
                 .font(.headline)
                 .foregroundColor(AliveTokens.textPrimary)
             
-            Text("ALIVE stays on your iPhone. No cloud required for Fast & Moderate.")
+            Text("ALIVE runs entirely on your iPhone. No cloud, no tracking, no internet required.")
                 .font(.subheadline)
                 .foregroundColor(AliveTokens.textSecondary)
                 .multilineTextAlignment(.center)
@@ -94,16 +96,20 @@ struct ChatView: View {
             
             // Status strip
             HStack(spacing: AliveTokens.md) {
-                statusChip(icon: chatVM.currentTier.systemImage, text: chatVM.currentTier.label, color: tierColor)
+                statusChip(
+                    icon: services.isModelLoaded ? "bolt.fill" : "bolt.slash",
+                    text: services.isModelLoaded ? "Ready" : "Import model",
+                    color: services.isModelLoaded ? tierColor : AliveTokens.textSecondary
+                )
                 statusChip(
                     icon: "internaldrive",
                     text: memoryLabel,
                     color: AliveTokens.textSecondary
                 )
                 statusChip(
-                    icon: appState.isOnline ? "wifi" : "wifi.slash",
-                    text: appState.isOnline ? "Online" : "Offline",
-                    color: appState.isOnline ? AliveTokens.accentPro : AliveTokens.textSecondary
+                    icon: "wifi.slash",
+                    text: "Offline",
+                    color: AliveTokens.textSecondary
                 )
             }
             .padding(.top, AliveTokens.sm)
@@ -172,7 +178,7 @@ struct ChatView: View {
         .buttonStyle(.plain)
     }
     
-    // MARK: - Messages
+    // MARK: - Message List
     
     private var messageList: some View {
         ScrollViewReader { proxy in
@@ -181,7 +187,7 @@ struct ChatView: View {
                     ForEach(chatVM.messages) { message in
                         MessageBubble(
                             message: message,
-                            tierColor: tierColorForMessage(message)
+                            tierColor: tierColor
                         )
                         .id(message.id)
                     }
@@ -191,7 +197,7 @@ struct ChatView: View {
                             message: ChatMessage(
                                 role: .assistant,
                                 content: chatVM.currentStreamingMessage,
-                                tierUsed: chatVM.currentTier.rawValue
+                                tierUsed: "Fast"
                             ),
                             isStreaming: true,
                             tierColor: tierColor
@@ -215,66 +221,10 @@ struct ChatView: View {
         }
     }
     
-    private func tierColorForMessage(_ message: ChatMessage) -> Color {
-        guard let raw = message.tierUsed,
-              let tier = RoutingTier(rawValue: raw) else {
-            return AliveTokens.accentFast
-        }
-        return tier.color
-    }
-    
-    // MARK: - Header
-    
-    private var headerView: some View {
-        HStack {
-            Text("ALIVE APPLE")
-                .font(.headline)
-                .foregroundColor(AliveTokens.textPrimary)
-            
-            Spacer()
-            
-            Menu {
-                ForEach(appState.availableTiers, id: \.self) { tier in
-                    Button(action: { chatVM.switchTier(tier) }) {
-                        HStack {
-                            Image(systemName: tier.systemImage)
-                                .foregroundColor(tier.color)
-                            Text(tier.label)
-                            if chatVM.currentTier == tier {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                TierBadge(tier: chatVM.currentTier)
-            }
-        }
-        .padding(.horizontal, AliveTokens.lg)
-        .padding(.vertical, AliveTokens.sm)
-        .background(AliveTokens.bgDeepest.opacity(0.98))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AliveTokens.border)
-                .frame(height: 1)
-        }
-    }
-    
     // MARK: - Input Bar
     
     private var inputBar: some View {
         HStack(spacing: AliveTokens.md) {
-            Button(action: toggleRecording) {
-                Image(systemName: isRecording ? "mic.fill" : "mic")
-                    .font(.system(size: 20))
-                    .foregroundColor(isRecording ? AliveTokens.accentError : AliveTokens.textSecondary)
-                    .frame(width: 36, height: 36)
-                    .background(
-                        Circle()
-                            .fill(isRecording ? AliveTokens.accentError.opacity(0.15) : Color.clear)
-                    )
-            }
-            
             TextField("Ask anything...", text: $messageText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .foregroundColor(AliveTokens.textPrimary)
@@ -315,11 +265,6 @@ struct ChatView: View {
         Task {
             await chatVM.sendMessage(text)
         }
-    }
-    
-    private func toggleRecording() {
-        isRecording.toggle()
-        // VoiceService wiring remains F9
     }
     
     private func scrollToBottom(proxy: ScrollViewProxy) {

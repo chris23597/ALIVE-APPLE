@@ -1,25 +1,22 @@
 import Foundation
 
-/// Configuration for a loaded model
+/// Model configurations for v1 Fast tier only.
+/// Both models use MLX format (safetensors, 4-bit quantized).
 struct ModelConfig: Identifiable, Codable, Hashable {
     let id: String
     let name: String
-    let fileName: String
+    let directoryName: String      // Subdirectory in Models/ containing safetensors
     let fileSizeBytes: Int64
-    let parameterCount: String  // e.g., "3.8B", "7.6B"
-    let quant: String           // "Q4_K_M"
+    let parameterCount: String
+    let quant: String
     let modelType: ModelType
     let tier: RoutingTier
     let contextSize: Int
     let isLoaded: Bool
-    let loadTimeSeconds: Double?
-    var mmprojFileName: String? = nil  // Multimodal projector file for vision models (nil for text-only)
     
     enum ModelType: String, Codable {
-        case text          // Pure text LLM
-        case vision        // Vision-language model
-        case embedding     // Text embeddings
-        case speech        // Speech-to-text
+        case text
+        case vision
     }
     
     var sizeGB: Double {
@@ -35,72 +32,45 @@ struct ModelConfig: Identifiable, Codable, Hashable {
     }
     
     var statusDescription: String {
-        if isLoaded {
-            return "Ready · \(formattedSize)"
-        } else {
-            return "Not Loaded · \(formattedSize)"
+        isLoaded ? "Ready · \(formattedSize)" : "Not Loaded · \(formattedSize)"
+    }
+    
+    /// HuggingFace repo ID for mlx-community pre-quantized model
+    var hfRepoId: String {
+        switch id {
+        case "phi-4-mini-3.8b": return "mlx-community/Phi-4-mini-instruct-4bit"
+        case "smolvlm2-2.2b":   return "mlx-community/SmolVLM2-2.2B-Instruct-4bit"
+        default:                return ""
         }
     }
     
-    // MARK: - Predefined Configurations
+    // MARK: - v1 Model Definitions
     
     static let phi4Mini = ModelConfig(
         id: "phi-4-mini-3.8b",
         name: "Phi-4 Mini 3.8B",
-        fileName: "Phi-4-mini-instruct-Q4_K_M.gguf",
+        directoryName: "phi-4-mini",
         fileSizeBytes: 2_400_000_000,
         parameterCount: "3.8B",
-        quant: "Q4_K_M",
+        quant: "4-bit MLX",
         modelType: .text,
         tier: .fast,
         contextSize: 4096,
-        isLoaded: false,
-        loadTimeSeconds: nil
-    )
-    
-    static let qwen25_7b = ModelConfig(
-        id: "qwen2.5-7b",
-        name: "Qwen2.5 7B",
-        fileName: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-        fileSizeBytes: 4_400_000_000,
-        parameterCount: "7.6B",
-        quant: "Q4_K_M",
-        modelType: .text,
-        tier: .moderate,
-        contextSize: 8192,
-        isLoaded: false,
-        loadTimeSeconds: nil
+        isLoaded: false
     )
     
     static let smolVLM2 = ModelConfig(
         id: "smolvlm2-2.2b",
         name: "SmolVLM2 2.2B",
-        fileName: "SmolVLM2-2.2B-Instruct-Q4_K_M.gguf",
-        fileSizeBytes: 1_040_000_000,
+        directoryName: "smolvlm2",
+        fileSizeBytes: 1_200_000_000,
         parameterCount: "2.2B",
-        quant: "Q4_K_M",
+        quant: "4-bit MLX",
         modelType: .vision,
         tier: .fast,
-        contextSize: 4096,
-        isLoaded: false,
-        loadTimeSeconds: nil,
-        mmprojFileName: "mmproj-SmolVLM2-2.2B-Instruct-f16.gguf"
+        contextSize: 2048,
+        isLoaded: false
     )
     
-    static let qwen25VL_7b = ModelConfig(
-        id: "qwen2.5-vl-7b",
-        name: "Qwen2.5-VL 7B",
-        fileName: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
-        fileSizeBytes: 4_360_000_000,
-        parameterCount: "7.6B",
-        quant: "Q4_K_M",
-        modelType: .vision,
-        tier: .moderate,
-        contextSize: 8192,
-        isLoaded: false,
-        loadTimeSeconds: nil,
-        mmprojFileName: "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf"
-    )
-    
-    static let allModels: [ModelConfig] = [phi4Mini, qwen25_7b, smolVLM2, qwen25VL_7b]
+    static let allModels: [ModelConfig] = [phi4Mini, smolVLM2]
 }

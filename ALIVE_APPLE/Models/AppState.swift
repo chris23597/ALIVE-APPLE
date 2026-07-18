@@ -1,19 +1,11 @@
 import Foundation
 import Observation
 
-/// Global application state — observed by all views
+/// Global application state — observed by all views.
+/// v1 simplified: single Fast tier, no API key, no RAG, no routing.
 @MainActor
 @Observable
 final class AppState {
-    
-    // MARK: - Routing
-    var activeTier: RoutingTier = .none
-    var routingMode: RoutingMode = .auto  // .auto | .manual
-    
-    enum RoutingMode: String, Codable {
-        case auto
-        case manual
-    }
     
     // MARK: - System State
     var isOnline: Bool = false
@@ -23,25 +15,13 @@ final class AppState {
     var isCharging: Bool = false
     
     // MARK: - Models
-    var loadedModels: [ModelConfig] = []
+    var loadedModel: ModelConfig?
     var availableModels: [ModelConfig] = []
     var isModelLoading: Bool = false
-    var modelLoadProgress: Double = 0.0  // 0.0 ... 1.0
-    
-    // MARK: - Pro Tier
-    var hasAPIKey: Bool = false
-    var isProAvailable: Bool {
-        isOnline && hasAPIKey
-    }
-    
-    // MARK: - RAG State
-    var ragChunkCount: Int = 0
-    var ragEmbeddingCoverage: Double = 0.0
-    var ragIsIndexing: Bool = false
+    var modelLoadProgress: Double = 0.0
     
     // MARK: - UI State
     var selectedTab: Tab = .chat
-    var showSettings: Bool = false
     var errorToast: String?
     var infoToast: String?
     
@@ -63,25 +43,8 @@ final class AppState {
     
     // MARK: - Computed
     
-    var availableTiers: [RoutingTier] {
-        var tiers: [RoutingTier] = [.fast]
-        if availableModels.contains(where: { $0.tier == .moderate }) {
-            tiers.append(.moderate)
-        }
-        if isProAvailable {
-            tiers.append(.pro)
-        }
-        tiers.append(.none)
-        return tiers
-    }
-    
     var currentModelDisplayName: String {
-        switch activeTier {
-        case .fast:     return "Phi-4 Mini 3.8B"
-        case .moderate: return "Qwen2.5 7B"
-        case .pro:      return "Grok (xAI)"
-        case .none:     return "No Model"
-        }
+        loadedModel?.name ?? "No Model"
     }
     
     var memoryDescription: String {
@@ -89,7 +52,7 @@ final class AppState {
         case .low:      return "Plenty free"
         case .normal:   return "Normal"
         case .warning:  return "Running low"
-        case .critical: return "Critical — unload models"
+        case .critical: return "Critical — unload model"
         }
     }
     
@@ -97,8 +60,8 @@ final class AppState {
         switch thermalState {
         case .nominal:  return "Cool"
         case .fair:     return "Warm"
-        case .serious:  return "Hot — Fast tier only"
-        case .critical: return "Very hot — pause inference"
+        case .serious:  return "Hot — pause inference"
+        case .critical: return "Very hot — stop"
         }
     }
     

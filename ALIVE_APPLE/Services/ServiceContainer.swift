@@ -1,53 +1,82 @@
 import Foundation
 import Observation
 
-/// Shared service container — all ViewModels share the same service instances.
-/// This matches the architecture doc: "Service Actors (global actors)."
-/// Without this, each ViewModel creates its own ModelManager/AutoRouter/etc,
-/// causing models loaded in one tab to be invisible to another.
+/// Shared service container — v1 simplified.
+/// All ViewModels share the same service instances via @Environment.
 @MainActor
 @Observable
 final class ServiceContainer {
     let inferenceEngine = InferenceEngine()
-    let modelManager: ModelManager
-    let autoRouter = AutoRouter()
-    let ragService = RAGService()
-    let grokService = GrokAPIService()
+    let modelManager = ModelManager(engine: InferenceEngine())
     let visionService = VisionService()
-    let voiceService = VoiceService()
-    let keychainManager = KeychainManager()
     let usbImportService = USBImportService()
     
-    init() {
-        // ModelManager now requires an InferenceEngine to delegate loading to
-        modelManager = ModelManager(engine: inferenceEngine)
-        
-        // Wire embedding provider: RAG uses the loaded model's llama_get_embeddings()
-        ragService.embeddingProvider = { [inferenceEngine] text in
-            try await inferenceEngine.embedText(text)
+    /// Shared model state (visible across all views)
+    var loadedModel: ModelConfig?
+    var isModelLoaded: Bool { loadedModel != nil }
+    var isLoading: Bool = false
+    
+    /// Load the Fast tier text model (Phi-4 Mini)
+    func ensureTextModelLoaded() async throws -> ModelConfig {
+        guard let config = RoutingTier.fast.textModel else {
+            throw ModelError.noModelForTier(.fast)
         }
         
-        // Load previously ingested documents on startup
-        Task { try? await ragService.loadChunks() }
-    }
-    
-    /// Shared model-loading state (visible across all views)
-    var loadedTextModel: ModelConfig?
-    var loadedVisionModel: ModelConfig?
-    var currentTier: RoutingTier = .none
-    
-    /// Ensure the shared ModelManager has the right text model loaded
-    func ensureTextModelLoaded(tier: RoutingTier) async throws -> ModelConfig {
-        let config = try await modelManager.ensureTextModelLoaded(tier: tier)
-        loadedTextModel = config
-        currentTier = tier
+        // If already loaded with correct model, return it
+        if loadedModel?.id == config.id, inferenceEngine.isLoaded {
+            return config
+        }
+        
+        // Unload any currently loaded model (text or vision)
+        if inferenceEngine.isLoaded {
+            inferenceEngine.unloadModel()
+        }
+        
+        isLoading = true
+        defer { isLoading = false }
+        
+        try await inferenceEngine.loadModel(config)
+        loadedModel = config
         return config
     }
     
-    /// Ensure the shared ModelManager has the right vision model loaded
-    func ensureVisionModelLoaded(tier: RoutingTier) async throws -> ModelConfig {
-        let config = try await modelManager.ensureVisionModelLoaded(tier: tier)
-        loadedVisionModel = config
+    /// Load the Fast tier vision model (SmolVLM2)
+    func ensureVisionModelLoaded() async throws -> ModelConfig {
+        guard let config = RoutingTier.fast.visionModel else {
+            throw ModelError.noModelForTier(.fast)
+        }
+        
+        if loadedModel?.id == config.id, inferenceEngine.isLoaded {
+            return config
+        }
+        
+        // Unload text model to free memory
+        if inferenceEngine.isLoaded {
+            inferenceEngine.unloadModel()
+        }
+        
+        isLoading = true
+        defer { isLoading = false }
+        
+        try await inferenceEngine.loadModel(config)
+        loadedModel = config
         return config
+    }
+    
+    /// Unload current model to free memory
+    func unloadModel() {
+        inferenceEngine.unloadModel()
+        loadedModel = nil
+    }
+}
+
+enum ModelError: LocalizedError {
+    case noModelForTier(RoutingTier)
+    
+    var errorDescription: String? {
+        switch self {
+        case .noModelForTier(let tier):
+            return "No model available for \(tier.label) tier"
+        }
     }
 }

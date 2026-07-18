@@ -1,64 +1,77 @@
-# ALIVE APPLE — System Architecture
+# ALIVE APPLE — System Architecture (v1)
 
 **Version:** 1.0.0  
-**Target:** iPhone 16 (A18, 8GB RAM) + USB-C exFAT storage  
+**Target:** iPhone 16 (A18, 8GB RAM)  
+**Backend:** MLX Swift (mlx-swift + mlx-swift-lm)  
+**Pattern:** SwiftUI + MVVM + Swift Actors
 
 ---
 
 ## 1. Architecture Overview
 
+v1 is a **single-model, local-only** architecture. No auto-routing, no multi-tier orchestration, no cloud fallback. One model loaded at a time — either the text LLM or the vision VLM — never both simultaneously.
+
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        PRESENTATION LAYER                        │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
-│  │Dashboard │ │  Chat    │ │  Vision  │ │ Settings │           │
-│  │   View   │ │  View    │ │  View    │ │  View    │           │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘           │
-│       │             │            │            │                  │
-│  ┌────┴─────────────┴────────────┴────────────┴─────┐           │
-│  │              ViewModels (ObservableObject)        │           │
-│  │  ChatVM  │  SettingsVM  │  ModelVM  │  VisionVM  │           │
-│  └──────────────────────┬───────────────────────────┘           │
-├─────────────────────────┼───────────────────────────────────────┤
-│                    BUSINESS LOGIC LAYER                          │
-│  ┌──────────────────────┴───────────────────────────┐           │
-│  │          Service Actors (global actors)           │           │
-│  │                                                  │           │
-│  │  ┌──────────────┐  ┌──────────────┐              │           │
-│  │  │InferenceEngine│  │ ModelManager │              │           │
-│  │  │   (Actor)    │  │   (Actor)    │              │           │
-│  │  └──────┬───────┘  └──────┬───────┘              │           │
-│  │         │                 │                       │           │
-│  │  ┌──────┴───────┐  ┌─────┴────────┐              │           │
-│  │  │ AutoRouter   │  │VoiceService  │              │           │
-│  │  │   (Actor)    │  │   (Actor)    │              │           │
-│  │  └──────────────┘  └──────────────┘              │           │
-│  │                                                  │           │
-│  │  ┌──────────────┐  ┌──────────────┐              │           │
-│  │  │VisionService │  │ RAGService   │              │           │
-│  │  │   (Actor)    │  │   (Actor)    │              │           │
-│  │  └──────────────┘  └──────────────┘              │           │
-│  │                                                  │           │
-│  │  ┌──────────────┐  ┌──────────────┐              │           │
-│  │  │KeychainMgr   │  │USBImportSvc  │              │           │
-│  │  │   (Actor)    │  │   (Actor)    │              │           │
-│  │  └──────────────┘  └──────────────┘              │           │
-│  └──────────────────────┬───────────────────────────┘           │
-├─────────────────────────┼───────────────────────────────────────┤
-│                    INFERENCE BACKENDS                            │
-│  ┌──────────────────────┴───────────────────────────┐           │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐       │           │
-│  │  │ llama.cpp│  │ MLX Swift│  │ CoreML   │       │           │
-│  │  │ (GGUF)   │  │ (MLX)    │  │ (ANE)    │       │           │
-│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘       │           │
-│  │       │             │            │               │           │
-│  │  ┌────┴─────────────┴────────────┴─────┐         │           │
-│  │  │       Model File Store              │         │           │
-│  │  │  ~/Library/ALIVE_APPLE/Models/      │         │           │
-│  │  └─────────────────────────────────────┘         │           │
-│  └──────────────────────────────────────────────────┘           │
+│                     PRESENTATION LAYER                            │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌──────────┐    │
+│  │ ChatView │  │VisionView│  │ModelImportView│  │Settings  │    │
+│  └────┬─────┘  └────┬─────┘  └──────┬───────┘  └────┬─────┘    │
+│       │              │               │                │          │
+│  ┌────┴──────────────┴───────────────┴────────────────┴─────┐    │
+│  │           ViewModels (@Observable, @MainActor)            │    │
+│  │  ChatVM (streaming, history)                               │    │
+│  │  ModelVM (import, load/unload, memory/thermal status)     │    │
+│  │  SettingsVM (preferences, model info)                     │    │
+│  └──────────────────────────┬───────────────────────────────┘    │
+├─────────────────────────────┼────────────────────────────────────┤
+│                     BUSINESS LOGIC LAYER                          │
+│  ┌──────────────────────────┴───────────────────────────────┐    │
+│  │               Services (Swift Actors)                      │    │
+│  │                                                            │    │
+│  │  ┌────────────────┐  ┌────────────────┐                    │    │
+│  │  │InferenceEngine │  │  ModelManager  │                    │    │
+│  │  │    (Actor)     │  │    (Actor)     │                    │    │
+│  │  │                │  │                │                    │    │
+│  │  │ - load()       │  │ - importModel()│                    │    │
+│  │  │ - generate()   │  │ - discoverModels│                   │    │
+│  │  │ - unload()     │  │ - validateModel│                    │    │
+│  │  │ - embedText()  │  │ - memoryBudget │                    │    │
+│  │  └───────┬────────┘  └───────┬────────┘                    │    │
+│  │          │                   │                              │    │
+│  │  ┌───────┴────────┐  ┌──────┴─────────┐                    │    │
+│  │  │ VisionService  │  │USBImportService│                    │    │
+│  │  │    (Actor)     │  │    (Actor)     │                    │    │
+│  │  │                │  │                │                    │    │
+│  │  │ - analyze()    │  │ - detectDrive()│                    │    │
+│  │  │ - preprocess() │  │ - scanModels() │                    │    │
+│  │  │ - dispatchVLM()│  │ - importToLocal│                    │    │
+│  │  └────────────────┘  └────────────────┘                    │    │
+│  │                                                            │    │
+│  │  ┌────────────────┐  ┌────────────────┐                    │    │
+│  │  │ MemoryMonitor  │  │ ThermalMonitor │                    │    │
+│  │  │ - pressureLevel│  │ - thermalState │                    │    │
+│  │  │ - warnThreshold│  │ - throttleGate │                    │    │
+│  │  └────────────────┘  └────────────────┘                    │    │
+│  └──────────────────────────┬───────────────────────────────┘    │
+├─────────────────────────────┼────────────────────────────────────┤
+│                    INFERENCE BACKEND                              │
+│  ┌──────────────────────────┴───────────────────────────────┐    │
+│  │                     MLX Swift                              │    │
+│  │  ┌──────────┐  ┌──────────────┐  ┌──────────────────┐    │    │
+│  │  │  MLXLLM  │  │ MLXLMCommon  │  │ MLXHuggingFace   │    │    │
+│  │  │ (models) │  │ (ChatSession)│  │ (download/load)  │    │    │
+│  │  └────┬─────┘  └──────┬───────┘  └────────┬─────────┘    │    │
+│  │       │               │                    │               │    │
+│  │  ┌────┴───────────────┴────────────────────┴─────┐         │    │
+│  │  │            Model File Store                    │         │    │
+│  │  │  ~/Library/ALIVE_APPLE/Models/                 │         │    │
+│  │  │  - phi-4-mini/     (safetensors + config)     │         │    │
+│  │  │  - smolvlm2/       (safetensors + config)     │         │    │
+│  │  └───────────────────────────────────────────────┘         │    │
+│  └────────────────────────────────────────────────────────────┘    │
 ├──────────────────────────────────────────────────────────────────┤
-│                   APPLE SILICON (A18)                            │
+│                   APPLE SILICON (A18)                             │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
 │  │CPU Cores │  │GPU Cores │  │Neural Eng│  │ 8GB RAM  │        │
 │  │  (6)     │  │   (5)    │  │  (16)    │  │ LPDDR5   │        │
@@ -70,90 +83,114 @@
 
 ## 2. Layer Details
 
-### 2.1 Presentation Layer (SwiftUI)
+### 2.1 Presentation Layer (SwiftUI + MVVM)
 
-All views are pure SwiftUI, following MVVM. ViewModels are `@Observable` (iOS 17+) classes that hold `@MainActor` state. Views never access services directly.
+All views are pure SwiftUI. ViewModels are `@Observable` classes annotated `@MainActor`. Views inject a shared `ServiceContainer` via `.environment()`.
 
 **Key Views:**
 | View | Purpose |
 |------|---------|
-| `DashboardView` | Landing screen — tier indicator, quick-prompt bar, model status, memory/thermal gauges |
-| `ChatView` | Full chat interface with streaming, markdown, image display |
-| `VisionView` | Camera capture + photo picker + VLM analysis results |
-| `SettingsView` | API key, model management, preferences |
-| `ModelPickerView` | Tier selection (Fast/Moderate/Pro/None) |
-| `ModelImportView` | USB/Files import workflow |
+| `ChatView` | Streaming chat with Markdown, model/thermal status bar |
+| `VisionView` | Photo picker + camera + VLM results |
+| `ModelImportView` | USB drive detection + model import workflow |
+| `SettingsView` | Preferences, model info, memory/thermal gauges |
 
 ### 2.2 Business Logic Layer (Swift Actors)
 
-All services are `actor` types for thread safety. They communicate with ViewModels via async methods.
-
-**Key Services:**
+All services are `actor` types. ViewModels never hold references to actors directly — they go through `ServiceContainer`.
 
 #### `InferenceEngine` (Actor)
-- Primary interface for text generation
-- Manages llama.cpp / MLX inference sessions
-- Streaming token callback via `AsyncStream`
-- Handles context management, prompt templating
-- Timeout enforcement
+
+The heart of the app. Wraps MLX Swift's model loading and text generation.
+
+```swift
+actor InferenceEngine {
+    func loadModel(_ config: ModelConfig) async throws
+    func generate(prompt: String, maxTokens: Int) -> AsyncThrowingStream<String, Error>
+    func generateVision(image: Data, prompt: String) -> AsyncThrowingStream<String, Error>
+    func unloadModel()
+    func embedText(_ text: String) async throws -> [Float]
+    var isLoaded: Bool { get }
+    var activeModelId: String? { get }
+}
+```
+
+**Key design decisions:**
+- Uses `MLXLLM` model loading via `#huggingFaceLoadModelContainer`
+- Uses `ChatSession` from MLXLMCommon for streaming chat with history
+- One model loaded at a time — `loadModel()` auto-unloads previous
+- Returns `AsyncThrowingStream<String, Error>` for SwiftUI streaming — non-blocking, cancellable
+- Vision path: loads VLM, preprocesses image, generates analysis
+- Memory: model is unloaded from GPU when `unloadModel()` is called
 
 #### `ModelManager` (Actor)
-- Model lifecycle: load, unload, reload
-- RAM budget tracking
-- Model file discovery and validation
-- Keeps only active-tier models in memory
-- Reports model status to ViewModels
 
-#### `AutoRouter` (Actor)
-- Analyzes incoming prompts for complexity
-- Considers: keyword density, embedding similarity to known-hard queries, message length
-- Reads system state: RAM pressure, battery, thermal
-- Selects tier: Fast | Moderate | Pro (if online)
-- Returns routing decision with confidence score
+Manages model files and loading lifecycle.
 
-#### `VoiceService` (Actor)
-- On-device STT via Apple Speech framework (or Whisper CoreML)
-- TTS via AVSpeechSynthesizer
-- Voice Activity Detection (VAD) for continuous listening
-- Audio session management
+```swift
+actor ModelManager {
+    func discoverModels() -> [ModelConfig]
+    func importModel(from url: URL) async throws
+    func validateModel(at url: URL) -> Bool
+    func ensureTextModelLoaded() async throws -> ModelConfig
+    func ensureVisionModelLoaded() async throws -> ModelConfig
+    func unloadCurrentModel()
+    var memoryBudget: (used: Int, limit: Int) { get }
+}
+```
+
+**Key rules:**
+- Text model loaded → vision request: unload text, load vision, run, unload vision, reload text
+- Vision model loaded → chat request: unload vision, load text, keep text loaded
+- Checks memory pressure before loading — refuses if >5.5GB
+- Model files stored in `Documents/Models/`
 
 #### `VisionService` (Actor)
-- Camera capture via AVFoundation
-- Photo library access via PHPicker
-- Image preprocessing (resize to model input dimensions)
-- VLM inference dispatch
-- Result parsing
 
-#### `RAGService` (Actor)
-- Document ingestion (PDF, TXT, MD)
-- On-device embedding generation (all-MiniLM-L6-v2 CoreML)
-- Vector similarity search (Swift-native ANN)
-- Context window assembly
+Image preprocessing and VLM dispatch.
 
-#### `KeychainManager` (Actor)
-- Secure API key storage/retrieval
-- Key presence check
-- Deletion
+```swift
+actor VisionService {
+    func analyze(image: Data, prompt: String) -> AsyncThrowingStream<String, Error>
+    func preprocessImage(_ data: Data, maxDimension: CGFloat) -> Data?
+    func sourceType(_ data: Data) -> ImageSource  // camera vs library metadata
+}
+```
 
 #### `USBImportService` (Actor)
-- Monitor for USB-C drive mounting
-- Scan for GGUF/MLX/CoreML model files
-- Validate model format and size
-- Copy to app-local model store
-- exFAT compatibility verification
 
-### 2.3 Inference Backends
+USB drive detection and model import.
 
-| Backend | Format | Use Case | Notes |
-|---------|--------|----------|-------|
-| **llama.cpp** (via Swift bindings) | GGUF Q4_K_M | Primary text LLM backend | Best GGUF support, Metal acceleration |
-| **MLX Swift** | MLX (safetensors) | Alternative text/VLM backend | Apple-first, growing ecosystem |
-| **CoreML** (ANE) | .mlmodelc | Embeddings, Whisper, SmolVLM | Fastest on ANE, size limited |
+```swift
+actor USBImportService {
+    func detectUSBDrive() -> URL?
+    func scanForModels(at url: URL) -> [URL]
+    func importModel(from sourceURL: URL, to destURL: URL) async throws -> Progress
+}
+```
 
-**Backend Selection Logic:**
-1. Prefer CoreML for small models (<1GB) that fit ANE
-2. Prefer llama.cpp for GGUF models (>1GB)
-3. MLX Swift as fallback / future path
+#### `MemoryMonitor` & `ThermalMonitor`
+
+Lightweight observers that expose `@MainActor` state for UI consumption.
+
+### 2.3 Inference Backend: MLX Swift
+
+| Package | Purpose |
+|---------|---------|
+| `mlx-swift` | Core MLX array framework for Apple Silicon |
+| `mlx-swift-lm` (MLXLLM, MLXLMCommon, MLXHuggingFace) | LLM/VLM model loading, chat session, streaming generation |
+| `swift-huggingface` (HuggingFace) | Model download from HuggingFace Hub |
+| `swift-transformers` (Tokenizers) | Tokenizer loading |
+
+**Why MLX Swift over llama.cpp:**
+1. **Pure Swift** — no C++ bridge, simpler build, better compile times
+2. **Native GPU** — MLX uses Metal Performance Shaders directly, best GPU utilization
+3. **Unified memory** — MLX tensors share memory with Swift, no copies
+4. **ChatSession** — built-in conversation state management (system prompt, history, streaming)
+5. **Model hub** — `#huggingFaceLoadModelContainer` macro for one-line model loading
+6. **Apple-first** — maintained by Apple's MLX team, optimized for A18/M4
+
+**Model format:** MLX uses safetensors (standard HuggingFace format). Models are quantized to 4-bit using MLX's built-in quantization. The `mlx-community` on HuggingFace provides pre-quantized MLX models for popular architectures.
 
 ---
 
@@ -164,26 +201,28 @@ All services are `actor` types for thread safety. They communicate with ViewMode
 ```
 User types message
   → ChatViewModel.sendMessage(text)
-    → AutoRouter.route(text, systemState) → tier decision
-      → if Fast/Moderate:
-          → ModelManager.ensureLoaded(tier)
-          → InferenceEngine.generate(prompt, model, stream)
-            → AsyncStream<String> → ChatViewModel.appendToken
-      → if Pro:
-          → GrokAPIService.send(prompt, apiKey)
-            → AsyncStream<String> → ChatViewModel.appendToken
+    → Build conversation messages (system prompt + history + new user message)
+    → ModelManager.ensureTextModelLoaded()
+      → InferenceEngine.generate(prompt, maxTokens: 2048)
+        → MLXLLM ChatSession.generate()
+          → AsyncThrowingStream<String, Error>
+            → ChatViewModel accumulates tokens
+              → ChatView renders streaming Markdown
+    → Save to SwiftData (ChatMessage)
 ```
 
 ### 3.2 Vision Flow
 
 ```
-User captures/selects image
-  → VisionService.analyze(image, prompt)
-    → Preprocess image (resize, normalize)
-    → AutoRouter.routeForVision(image, prompt) → VLM tier
-    → ModelManager.ensureVLMLoaded(tier)
-    → InferenceEngine.generateVision(image + prompt, vlm)
-    → Parsed result → VisionView.display()
+User selects/captures image
+  → VisionView triggers VisionService.analyze(image, prompt)
+    → preprocessImage(resize to 1024px max)
+    → ModelManager.unloadCurrentModel()
+    → ModelManager.ensureVisionModelLoaded()
+    → InferenceEngine.generateVision(image, prompt)
+      → MLXVLM model generate with image input
+    → Return streaming response
+    → Optionally reload text model after
 ```
 
 ### 3.3 Model Import Flow
@@ -191,148 +230,97 @@ User captures/selects image
 ```
 USB drive connected
   → USBImportService.detectDrive()
-    → Scan for model files (*.gguf, *.mlx, *.mlmodelc)
-    → Validate format + metadata
-    → Show available models in UI
-    → User confirms import
-    → Copy to ~/Library/ALIVE_APPLE/Models/
-    → ModelManager.register(new models)
+    → Scan for model directories (safetensors + config.json)
+    → Display available models in ModelImportView
+    → User taps "Import"
+    → Copy to Documents/Models/<model-name>/
+    → ModelManager discovers new model
+    → Ready to load
 ```
 
 ---
 
-## 4. State Management
+## 4. Memory Management Strategy
 
-### 4.1 App State (`AppState` — `@Observable`)
-```swift
-@Observable
-final class AppState {
-    var activeTier: RoutingTier = .fast
-    var isOnline: Bool = false
-    var memoryPressure: MemoryPressure = .normal
-    var thermalState: ThermalState = .nominal
-    var batteryLevel: Float = 1.0
-    var loadedModels: [ModelConfig] = []
-    var hasAPIKey: Bool = false
-}
+### 4.1 Budget
+
+| Component | Budget |
+|-----------|--------|
+| iOS + system | ~2.5 GB |
+| App (UI, SwiftData, buffers) | ~0.5 GB |
+| **Available for models** | **~5.0 GB** |
+| **Safety ceiling** | **5.5 GB** |
+
+### 4.2 Rules
+
+1. **One model at a time** — never load text + vision simultaneously
+2. **Before loading:** check `MemoryMonitor.pressureLevel` — if `.warning` or `.critical`, refuse and notify user
+3. **During inference:** monitor `MemoryMonitor` — if pressure spikes to `.critical`, cancel generation and unload
+4. **Idle timeout:** Model unloaded after 5 minutes of inactivity (configurable)
+5. **Thermal gate:** If `ThermalMonitor.state >= .serious`, pause inference, show cooling message
+6. **Background:** Unload model when app enters background, reload on foreground if needed
+
+### 4.3 Model Lifecycle
+
+```
+App Launch → discoverModels() → show "No model" state
+     ↓
+User imports model → ModelManager discovers it
+     ↓
+First chat → ensureTextModelLoaded() → load phi-4-mini
+     ↓
+Chat session → keep loaded (streaming, responsive)
+     ↓
+Idle 5 min → unloadModel()
+     ↓
+Vision request → unload text → load smolvlm2 → run → unload vision → reload text
 ```
 
-### 4.2 Chat State (`ChatViewModel` — `@Observable`)
-```swift
-@Observable
-final class ChatViewModel {
-    var messages: [ChatMessage] = []
-    var currentStreamingMessage: String = ""
-    var isGenerating: Bool = false
-    var currentTier: RoutingTier = .fast
-}
-```
+---
+
+## 5. Concurrency Model
+
+- **ViewModels:** `@MainActor` `@Observable` classes — all UI state on main actor
+- **Services:** `actor` types — serial execution, no data races
+- **Inference:** MLX Swift runs on GPU (Metal command queues), async from Swift
+- **Streaming:** `AsyncThrowingStream<String, Error>` — non-blocking, cancellable, Swift concurrency native
+- **No locks:** Swift actors + structured concurrency eliminate need for manual locking
 
 ---
 
-## 5. Performance Budget
-
-| Metric | Budget |
-|--------|--------|
-| Total RAM | 8GB |
-| iOS + system reserve | 2.5GB |
-| Model RAM ceiling | 5.5GB |
-| Fast tier models loaded | ~3.8GB (Phi-4 Mini + SmolVLM2) |
-| Moderate tier loaded | ~5.1GB (Qwen2.5 7B + Qwen2.5-VL 7B) — tight but fits |
-| Max concurrent models | 2 (1 text + 1 vision) |
-| Streaming token latency | <50ms between tokens |
-| Vision preprocessing | <200ms |
-| Model swap time | <3 seconds |
-
----
-
-## 6. Security Model
-
-| Concern | Solution |
-|---------|----------|
-| API key storage | iOS Keychain (kSecClassGenericPassword) |
-| Chat history | App sandbox only (no iCloud) |
-| Model files | App sandbox only |
-| Network (Pro tier only) | HTTPS, ATS-compliant |
-| No telemetry | No 3rd-party analytics SDKs |
-| Code signing | Standard Apple Developer cert |
-
----
-
-## 7. Directory Structure
+## 6. Project Structure (v1)
 
 ```
 ALIVE_APPLE/
-├── PRD.md
-├── ARCHITECTURE.md
-├── BUILD_GUIDE.md
-├── MODEL_INVENTORY.md
-├── TESTING_PLAN.md
-├── USB_SETUP.md
-├── README.md
-├── Docs/
-│   ├── ROUTING.md
-│   ├── VOICE.md
-│   ├── API_KEY.md
-│   └── UI_MOCKUPS.md
-├── ALIVE_APPLE.xcodeproj/
-├── ALIVE_APPLE/
-│   ├── ALIVE_APPLEApp.swift
-│   ├── ContentView.swift
-│   ├── Models/
-│   │   ├── ChatMessage.swift
-│   │   ├── ModelConfig.swift
-│   │   ├── RoutingTier.swift
-│   │   └── AppState.swift
-│   ├── Services/
-│   │   ├── InferenceEngine.swift
-│   │   ├── ModelManager.swift
-│   │   ├── AutoRouter.swift
-│   │   ├── VoiceService.swift
-│   │   ├── VisionService.swift
-│   │   ├── RAGService.swift
-│   │   ├── KeychainManager.swift
-│   │   └── USBImportService.swift
-│   ├── Views/
-│   │   ├── DashboardView.swift
-│   │   ├── ChatView.swift
-│   │   ├── ModelPickerView.swift
-│   │   ├── SettingsView.swift
-│   │   ├── VisionView.swift
-│   │   └── ModelImportView.swift
-│   ├── ViewModels/
-│   │   ├── ChatViewModel.swift
-│   │   ├── SettingsViewModel.swift
-│   │   └── ModelViewModel.swift
-│   └── Utils/
-│       ├── ThermalMonitor.swift
-│       └── MemoryMonitor.swift
-└── Scripts/
-    ├── download_models.sh
-    └── convert_to_coreml.py
+├── ALIVE_APPLEApp.swift              # App entry, environment setup
+├── ContentView.swift                 # Tab view root
+├── Models/
+│   ├── ModelConfig.swift             # Text + vision model definitions
+│   └── ChatMessage.swift             # SwiftData chat model
+├── Services/
+│   ├── InferenceEngine.swift         # MLX Swift wrapper (actor)
+│   ├── ModelManager.swift            # Model lifecycle (actor)
+│   ├── VisionService.swift           # Image processing + VLM dispatch (actor)
+│   ├── USBImportService.swift        # USB detection + import (actor)
+│   ├── ServiceContainer.swift        # Shared service instances
+│   └── SystemPrompt.swift            # ALIVE on-device persona
+├── Views/
+│   ├── ChatView.swift                # Streaming chat UI
+│   ├── VisionView.swift              # Photo/camera + analysis
+│   ├── ModelImportView.swift         # USB import workflow
+│   └── SettingsView.swift            # Preferences + system info
+├── ViewModels/
+│   ├── ChatViewModel.swift           # Chat state + streaming
+│   ├── ModelViewModel.swift          # Model status + import
+│   └── SettingsViewModel.swift       # Preferences
+├── Utils/
+│   ├── MemoryMonitor.swift           # Memory pressure observer
+│   ├── ThermalMonitor.swift          # Thermal state observer
+│   └── DesignTokens.swift            # Colors, spacing, typography
+└── Tests/
+    └── ALIVE_APPLETests.swift
 ```
 
 ---
 
-## 8. Dependency Map
-
-```
-ALIVE_APPLEApp
-  └─> AppState (global Observable)
-       └─> ContentView
-            ├─> DashboardView
-            │    └─> ModelViewModel → ModelManager
-            ├─> ChatView
-            │    └─> ChatViewModel → InferenceEngine, AutoRouter
-            ├─> VisionView
-            │    └─> VisionViewModel → VisionService, InferenceEngine
-            ├─> SettingsView
-            │    └─> SettingsViewModel → KeychainManager, ModelManager
-            └─> ModelImportView
-                 └─> USBImportService
-```
-
----
-
-*This architecture is designed for iPhone 16 on-device performance.  
-It respects 8GB RAM, A18 thermal constraints, and Apple's iOS sandbox model.*
+*Architecture optimized for reliability, not feature count. One model, done well.*

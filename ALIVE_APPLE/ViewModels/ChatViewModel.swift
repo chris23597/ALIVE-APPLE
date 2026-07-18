@@ -1,9 +1,8 @@
 import Foundation
 import Observation
-import SwiftData
 
-/// ViewModel for the chat interface
-/// Uses shared ServiceContainer for global actor service instances
+/// ViewModel for the chat interface — v1 simplified.
+/// Single Fast tier, no auto-routing, direct MLX inference.
 @MainActor
 @Observable
 final class ChatViewModel {
@@ -15,11 +14,9 @@ final class ChatViewModel {
     var isGenerating: Bool = false
     var currentTier: RoutingTier = .fast
     var errorMessage: String?
-    var conversation: Conversation?
     
-    // MARK: - Services (shared via ServiceContainer)
+    // MARK: - Services (injected by view)
     
-    /// Injected by the view hierarchy — set before use
     var services: ServiceContainer?
     var appState: AppState?
     
@@ -43,91 +40,39 @@ final class ChatViewModel {
         isGenerating = true
         currentStreamingMessage = ""
         errorMessage = nil
+        currentTier = .fast
         
         do {
-            // 1. Route to determine tier
-            let decision = await services.autoRouter.route(
-                prompt: text,
-                hasImage: image != nil,
-                conversationLength: messages.count,
-                memoryPressure: appState?.memoryPressure ?? .normal,
-                thermalState: appState?.thermalState ?? .nominal,
-                batteryLevel: appState?.batteryLevel ?? 1.0,
-                isOnline: appState?.isOnline ?? false,
-                hasAPIKey: appState?.hasAPIKey ?? false,
-                forcedTier: appState?.routingMode == .manual ? appState?.activeTier : nil
-            )
-            
-            currentTier = decision.tier
-            appState?.activeTier = decision.tier
-            
-            // 2. Optionally augment with RAG
-            var usedRAG = false
-            let finalPrompt: String
-            if decision.tier.isOnDevice {
-                let augmented = await services.ragService.augmentPrompt(userPrompt: text)
-                usedRAG = augmented != text
-                finalPrompt = augmented
+            // 1. Load text model (or vision model if image present)
+            let model: ModelConfig
+            if image != nil {
+                model = try await services.ensureVisionModelLoaded()
             } else {
-                finalPrompt = text
+                model = try await services.ensureTextModelLoaded()
             }
             
-            // 3. Build message list with ALIVE system prompt first (Fast/Moderate)
+            // 2. Build message list with system prompt
             var inferenceMessages = messages
-            if decision.tier.isOnDevice {
-                let sys = ChatMessage(
-                    role: .system,
-                    content: AliveSystemPrompt.full(tier: decision.tier, hasRAG: usedRAG)
-                )
-                // Drop any prior system rows, prepend one canonical prompt
-                inferenceMessages.removeAll { $0.role == .system }
-                // Last user may need RAG-augmented content for this turn
-                if usedRAG, let lastIdx = inferenceMessages.indices.last,
-                   inferenceMessages[lastIdx].role == .user {
-                    inferenceMessages[lastIdx] = ChatMessage(
-                        role: .user,
-                        content: finalPrompt,
-                        hasImage: image != nil,
-                        imageData: image
-                    )
-                }
-                inferenceMessages.insert(sys, at: 0)
-            }
+            let sys = ChatMessage(
+                role: .system,
+                content: AliveSystemPrompt.core
+            )
+            inferenceMessages.removeAll { $0.role == .system }
+            inferenceMessages.insert(sys, at: 0)
             
-            // 4. Run inference based on tier
+            // 3. Run inference
             let stream: AsyncThrowingStream<String, Error>
-            
-            switch decision.tier {
-            case .fast, .moderate:
-                guard let modelConfig = decision.tier.textModel else {
-                    throw ModelError.noModelForTier(decision.tier)
-                }
-                
-                // Ensure model is loaded via shared service container
-                let model = try await services.ensureTextModelLoaded(tier: decision.tier)
-                
-                // If there's an image, use vision pipeline
-                if let imageData = image {
-                    stream = await services.inferenceEngine.generateVision(
-                        image: imageData,
-                        prompt: finalPrompt,
-                        model: model
-                    )
-                } else {
-                    stream = await services.inferenceEngine.generate(
-                        messages: inferenceMessages,
-                        model: model
-                    )
-                }
-                
-            case .pro:
-                stream = await services.grokService.send(
-                    messages: inferenceMessages,
-                    stream: true
+            if let imageData = image {
+                stream = await services.inferenceEngine.generateVision(
+                    image: imageData,
+                    prompt: text,
+                    model: model
                 )
-                
-            case .none:
-                throw ModelError.noModelForTier(.none)
+            } else {
+                stream = await services.inferenceEngine.generate(
+                    messages: inferenceMessages,
+                    model: model
+                )
             }
             
             // 4. Collect streaming response
@@ -141,7 +86,7 @@ final class ChatViewModel {
             let assistantMessage = ChatMessage(
                 role: .assistant,
                 content: fullResponse,
-                tierUsed: decision.tier.rawValue
+                tierUsed: currentTier.rawValue
             )
             messages.append(assistantMessage)
             
@@ -166,21 +111,5 @@ final class ChatViewModel {
         messages.removeAll()
         currentStreamingMessage = ""
         errorMessage = nil
-    }
-    
-    func loadConversation(_ conversation: Conversation) {
-        self.conversation = conversation
-        self.messages = conversation.messages
-    }
-    
-    // MARK: - Tier Switching
-    
-    func switchTier(_ tier: RoutingTier) {
-        appState?.activeTier = tier
-        appState?.routingMode = .manual
-    }
-    
-    func enableAutoRouting() {
-        appState?.routingMode = .auto
     }
 }
