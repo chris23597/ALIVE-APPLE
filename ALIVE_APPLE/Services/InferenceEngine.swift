@@ -245,7 +245,11 @@ actor InferenceEngine {
     
     // MARK: - Timeout
     
-    private func withTimeout<T>(seconds: Double, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    /// TaskGroup child results must be Sendable under Swift 6 / strict concurrency (Xcode 26 CI).
+    private func withTimeout<T: Sendable>(
+        seconds: Double,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask { try await operation() }
             group.addTask {
