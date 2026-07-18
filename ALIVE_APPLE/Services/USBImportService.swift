@@ -1,53 +1,50 @@
 import Foundation
 import UniformTypeIdentifiers
+import SwiftUI
 
-/// Detects and imports models from USB-C drives
+/// Detects and imports models from USB-C drives and Files app on iOS.
+///
+/// Uses UIDocumentPickerViewController for iOS file access —
+/// iOS doesn't expose raw mount points like `/Volumes/`.
+/// The picker allows users to browse their Files app (iCloud, USB drives, local storage).
 actor USBImportService {
     
     // MARK: - Configuration
     
+    /// Supported model file extensions
     private let supportedExtensions = ["gguf", "mlx", "mlmodelc"]
-    private let maxFileSizeBytes: Int64 = 6_000_000_000  // 6GB
     
-    // MARK: - State
+    /// Maximum file size for import (6GB)
+    private let maxFileSizeBytes: Int64 = 6_000_000_000
+    
+    /// Minimum file size (500MB — reject too-small files)
+    private let minFileSizeBytes: Int64 = 500_000_000
+    
+    // MARK: - Import Progress
     
     private var importProgress: Double = 0
     private var totalBytesToImport: Int64 = 0
     private var bytesImported: Int64 = 0
     
-    // MARK: - Drive Detection
+    // MARK: - Model Discovery
     
-    /// Check if a USB drive with models is mounted
-    func detectUSBDrive() -> URL? {
-        // On iOS, external drives appear in the app's document browser
-        // The Files app provides access via UIDocumentPickerViewController
-        
-        // For direct USB-C detection:
-        let fileManager = FileManager.default
-        
-        // Check common mount points
-        let possiblePaths = [
-            "/Volumes/ALIVE_MODELS",
-            "/var/mobile/Media/ALIVE_MODELS"
-        ]
-        
-        for path in possiblePaths {
-            if fileManager.fileExists(atPath: path) {
-                return URL(fileURLWithPath: path)
-            }
-        }
-        
-        return nil
-    }
-    
-    /// Scan a directory for model files
+    /// Scan a directory for model files.
+    /// Works with any directory the user has granted access to via document picker.
     func scanForModels(in directory: URL) -> [DiscoveredModel] {
         var discovered: [DiscoveredModel] = []
+        
+        // Check if directory is accessible (security-scoped resource)
+        let isSecurityScoped = directory.startAccessingSecurityScopedResource()
+        defer {
+            if isSecurityScoped {
+                directory.stopAccessingSecurityScopedResource()
+            }
+        }
         
         guard let enumerator = FileManager.default.enumerator(
             at: directory,
             includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else {
             return discovered
         }
@@ -60,7 +57,7 @@ actor USBImportService {
             guard let resourceValues = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
                   let fileSize = resourceValues.fileSize,
                   fileSize <= maxFileSizeBytes,
-                  fileSize >= 500_000_000 else {  // Minimum 500MB
+                  fileSize >= minFileSizeBytes else {
                 continue
             }
             
@@ -80,8 +77,11 @@ actor USBImportService {
     /// Try to match a discovered file to a known model config
     private func matchToConfig(fileName: String, fileSize: Int64) -> ModelConfig? {
         for template in ModelConfig.allModels {
-            if fileName.contains(template.fileName.replacingOccurrences(of: ".gguf", with: "")) ||
-               fileName.contains(template.name.replacingOccurrences(of: " ", with: "-")) {
+            // Match by filename or model name
+            let nameMatch = fileName.lowercased().contains(template.fileName.lowercased().replacingOccurrences(of: ".gguf", with: ""))
+            let configMatch = fileName.lowercased().contains(template.name.lowercased().replacingOccurrences(of: " ", with: "-"))
+            
+            if nameMatch || configMatch {
                 return template
             }
         }
@@ -90,8 +90,16 @@ actor USBImportService {
     
     // MARK: - Import
     
-    /// Import a single model file to app sandbox
+    /// Import a single model file to app sandbox.
+    /// Handles security-scoped URLs from document picker.
     func importModel(from sourceURL: URL, to modelManager: ModelManager) async throws {
+        let isSecurityScoped = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if isSecurityScoped {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        
         let matchedConfig = matchToConfig(
             fileName: sourceURL.lastPathComponent,
             fileSize: (try? sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize.map(Int64.init)) ?? 0
@@ -101,6 +109,11 @@ actor USBImportService {
             throw USBImportError.unrecognizedModel(sourceURL.lastPathComponent)
         }
         
+        // Validate the file before copying
+        guard await modelManager.validateModelFile(url: sourceURL) else {
+            throw USBImportError.invalidModel(sourceURL.lastPathComponent)
+        }
+        
         try await modelManager.importModel(from: sourceURL, config: config)
     }
     
@@ -108,7 +121,7 @@ actor USBImportService {
     func importAll(
         models: [DiscoveredModel],
         modelManager: ModelManager,
-        onProgress: @escaping (Double) -> Void
+        onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
         totalBytesToImport = models.reduce(0) { $0 + $1.fileSize }
         bytesImported = 0
@@ -116,35 +129,107 @@ actor USBImportService {
         for model in models {
             try await importModel(from: model.url, to: modelManager)
             bytesImported += model.fileSize
-            onProgress(Double(bytesImported) / Double(totalBytesToImport))
+            let progress = Double(bytesImported) / Double(totalBytesToImport)
+            onProgress(progress)
         }
     }
     
-    // MARK: - exFAT Verification
+    // MARK: - URL Helpers
     
-    /// Check if a volume is exFAT formatted
-    func verifyExFATFormat(volumeURL: URL) -> Bool {
-        // On iOS, we rely on the fact that mounted drives must be exFAT
-        // (iOS doesn't support NTFS or APFS for external drives)
-        // This is a heuristic check
-        let path = volumeURL.path
+    /// Check if a URL represents a valid model file
+    func isModelFile(_ url: URL) -> Bool {
+        supportedExtensions.contains(url.pathExtension.lowercased())
+    }
+    
+    /// Get the filename for display
+    func displayName(for url: URL) -> String {
+        url.lastPathComponent
+    }
+}
+
+// MARK: - Document Picker (SwiftUI)
+
+/// SwiftUI wrapper for UIDocumentPickerViewController.
+/// Allows users to browse and select model files from Files app,
+/// iCloud Drive, or connected USB-C drives.
+struct ModelDocumentPicker: UIViewControllerRepresentable {
+    
+    /// Called when user selects model files
+    let onPick: ([URL]) -> Void
+    
+    /// Content types for model files
+    static var modelUTTypes: [UTType] {
+        // Register GGUF as a known type, plus generic data for other formats
+        let gguf = UTType(filenameExtension: "gguf") ?? .data
+        let mlx = UTType(filenameExtension: "mlx") ?? .data
+        let mlmodelc = UTType(filenameExtension: "mlmodelc") ?? .data
+        return [gguf, mlx, mlmodelc]
+    }
+    
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: Self.modelUTTypes, asCopy: true)
+        picker.allowsMultipleSelection = true
+        picker.delegate = context.coordinator
+        picker.shouldShowFileExtensions = true
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+    
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: ([URL]) -> Void
         
-        // Check volume capabilities
-        let fileManager = FileManager.default
-        guard let attributes = try? fileManager.attributesOfItem(atPath: path) else {
-            return false
+        init(onPick: @escaping ([URL]) -> Void) {
+            self.onPick = onPick
         }
         
-        // exFAT volumes support files larger than 4GB
-        let testFile = volumeURL.appendingPathComponent(".alive_test_write")
-        let testData = Data(count: 1)
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onPick(urls)
+        }
         
-        do {
-            try testData.write(to: testFile)
-            try fileManager.removeItem(at: testFile)
-            return true
-        } catch {
-            return false
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            // User cancelled — no action needed
+        }
+    }
+}
+
+/// SwiftUI wrapper for directory picker (used to select a USB drive root).
+struct ModelDirectoryPicker: UIViewControllerRepresentable {
+    
+    let onPick: (URL) -> Void
+    
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+    
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (URL) -> Void
+        
+        init(onPick: @escaping (URL) -> Void) {
+            self.onPick = onPick
+        }
+        
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            if let url = urls.first {
+                onPick(url)
+            }
+        }
+        
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            // User cancelled
         }
     }
 }
@@ -170,28 +255,30 @@ struct DiscoveredModel: Identifiable {
     var tierLabel: String {
         matchedConfig?.tier.label ?? "Unknown"
     }
-    
-    var tierColor: String {
-        matchedConfig?.tier.rawValue ?? "Unknown"
-    }
 }
 
 enum USBImportError: LocalizedError {
     case unrecognizedModel(String)
+    case invalidModel(String)
     case driveNotFound
     case notExFAT
     case insufficientSpace(needed: Int64, available: Int64)
+    case accessDenied
     
     var errorDescription: String? {
         switch self {
         case .unrecognizedModel(let name):
             return "Unrecognized model file: \(name)"
+        case .invalidModel(let name):
+            return "Invalid model file: \(name)"
         case .driveNotFound:
-            return "No USB drive detected"
+            return "No USB drive detected. Connect a USB-C drive with model files."
         case .notExFAT:
             return "Drive must be formatted as exFAT"
         case .insufficientSpace(let needed, let available):
             return "Need \(ByteCountFormatter.string(fromByteCount: needed, countStyle: .file)) but only \(ByteCountFormatter.string(fromByteCount: available, countStyle: .file)) available"
+        case .accessDenied:
+            return "Access to the selected file was denied"
         }
     }
 }

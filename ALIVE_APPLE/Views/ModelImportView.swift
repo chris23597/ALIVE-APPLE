@@ -1,6 +1,12 @@
 import SwiftUI
 
-/// Dashboard and model-import view combined
+/// Dashboard and model-import view combined.
+///
+/// USB import flow:
+/// 1. User taps "Browse Files" or "Browse Folder"
+/// 2. iOS document picker opens (Files app, iCloud, USB drives)
+/// 3. Selected models are scanned and displayed
+/// 4. User confirms import
 struct ModelImportView: View {
     @Environment(AppState.self) private var appState
     @Environment(ServiceContainer.self) private var services
@@ -63,22 +69,45 @@ struct ModelImportView: View {
                 }
             }
             
-            // MARK: - USB Import
-            Section("USB Import") {
+            // MARK: - Model Import (Document Picker)
+            Section("Import Models") {
+                VStack(spacing: 12) {
+                    // Browse buttons
+                    HStack(spacing: 16) {
+                        Button(action: { modelVM.showDocumentPicker = true }) {
+                            Label("Browse Files", systemImage: "doc.badge.plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        
+                        Button(action: { modelVM.showDirectoryPicker = true }) {
+                            Label("Browse Folder", systemImage: "folder.badge.plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    
+                    Text("Select .gguf, .mlx, or .mlmodelc model files from Files, iCloud, or a connected USB-C drive.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 4)
+                }
+                .padding(.vertical, 4)
+                
+                // Scanning state
                 if modelVM.isScanningUSB {
                     HStack {
                         ProgressView()
                             .padding(.trailing, 8)
-                        Text("Scanning USB drive...")
+                        Text("Scanning selected files...")
                             .foregroundColor(.secondary)
                     }
-                } else if modelVM.discoveredUSBModels.isEmpty {
-                    Button(action: {
-                        Task { await modelVM.scanUSBDrive() }
-                    }) {
-                        Label("Scan for Models", systemImage: "magnifyingglass")
-                    }
-                } else {
+                }
+                
+                // Discovered models
+                if !modelVM.discoveredUSBModels.isEmpty {
                     ForEach(modelVM.discoveredUSBModels) { model in
                         DiscoveredModelRow(
                             model: model,
@@ -91,30 +120,35 @@ struct ModelImportView: View {
                             }
                         }
                     }
-                    
-                    if modelVM.isImporting {
-                        VStack(spacing: 8) {
-                            ProgressView(value: modelVM.importProgress)
-                            Text("Importing... \(Int(modelVM.importProgress * 100))%")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    } else {
-                        Button(action: {
-                            let selected = modelVM.discoveredUSBModels.filter { selectedModels.contains($0.id) }
-                            Task { await modelVM.importSelectedModels(selected) }
-                        }) {
-                            Label(
-                                selectedModels.isEmpty
-                                ? "Import All (\(modelVM.discoveredUSBModels.count) models)"
-                                : "Import Selected (\(selectedModels.count) models)",
-                                systemImage: "square.and.arrow.down.fill"
-                            )
-                        }
-                        .disabled(selectedModels.isEmpty && modelVM.discoveredUSBModels.isEmpty)
+                }
+                
+                // Import progress
+                if modelVM.isImporting {
+                    VStack(spacing: 8) {
+                        ProgressView(value: modelVM.importProgress)
+                        Text("Importing... \(Int(modelVM.importProgress * 100))%")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
                 
+                // Import button (shown when models are discovered and not currently importing)
+                if !modelVM.discoveredUSBModels.isEmpty && !modelVM.isImporting {
+                    Button(action: {
+                        let selected = modelVM.discoveredUSBModels.filter { selectedModels.contains($0.id) }
+                        Task { await modelVM.importSelectedModels(selected) }
+                    }) {
+                        Label(
+                            selectedModels.isEmpty
+                            ? "Import All (\(modelVM.discoveredUSBModels.count) models)"
+                            : "Import Selected (\(selectedModels.count) models)",
+                            systemImage: "square.and.arrow.down.fill"
+                        )
+                    }
+                    .disabled(selectedModels.isEmpty && modelVM.discoveredUSBModels.isEmpty)
+                }
+                
+                // Error display
                 if let error = modelVM.importError {
                     Text(error)
                         .font(.caption)
@@ -125,9 +159,17 @@ struct ModelImportView: View {
             // MARK: - Available Models
             Section("Imported Models") {
                 if modelVM.availableModels.isEmpty {
-                    Text("No models imported. Connect a USB drive to get started.")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    VStack(spacing: 8) {
+                        Text("No models imported yet.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text("Tap \"Browse Files\" to select model files from your device or USB drive.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
                 } else {
                     ForEach(modelVM.availableModels) { model in
                         ModelRow(model: model)
@@ -149,6 +191,18 @@ struct ModelImportView: View {
         .onAppear {
             modelVM.services = services
             Task { await modelVM.loadModelState() }
+        }
+        // Document picker for individual model files
+        .sheet(isPresented: $modelVM.showDocumentPicker) {
+            ModelDocumentPicker { urls in
+                Task { await modelVM.scanPickedFiles(urls: urls) }
+            }
+        }
+        // Directory picker for folder scanning
+        .sheet(isPresented: $modelVM.showDirectoryPicker) {
+            ModelDirectoryPicker { url in
+                Task { await modelVM.scanPickedDirectory(url: url) }
+            }
         }
     }
 }
@@ -203,16 +257,21 @@ struct ModelRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.name)
                     .font(.body)
-                Text("\(model.parameterCount) · \(model.quant) · \(model.formattedSize)")
+                Text("\(model.quant) · \(model.formattedSize)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             Spacer()
             
-            Circle()
-                .fill(model.isLoaded ? Color.green : Color.secondary.opacity(0.3))
-                .frame(width: 10, height: 10)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(model.isLoaded ? Color.green : Color.secondary.opacity(0.3))
+                    .frame(width: 8, height: 8)
+                Text(model.isLoaded ? "Loaded" : "Ready")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 }
@@ -226,26 +285,30 @@ struct DiscoveredModelRow: View {
         Button(action: onTap) {
             HStack {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .green : .secondary)
-                    .font(.title3)
+                    .foregroundColor(isSelected ? .blue : .secondary)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.fileName)
                         .font(.body)
                         .lineLimit(1)
-                    HStack {
+                    HStack(spacing: 8) {
                         Text(model.formattedSize)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                         if let tier = model.matchedConfig?.tier {
-                            Text("·")
                             Text(tier.label)
+                                .font(.caption2)
                                 .foregroundColor(tier.color)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(tier.color.opacity(0.15))
+                                .clipShape(Capsule())
                         }
                     }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
                 }
             }
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -253,6 +316,7 @@ struct DiscoveredModelRow: View {
     NavigationStack {
         ModelImportView()
             .environment(AppState())
+            .environment(ServiceContainer())
             .preferredColorScheme(.dark)
     }
 }

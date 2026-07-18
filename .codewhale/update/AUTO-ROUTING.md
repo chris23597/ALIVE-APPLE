@@ -1,7 +1,7 @@
 # Auto-routing (seamless — no user invoke required)
 
 CodeWhale **must** apply matching skills automatically when symptoms appear.  
-Do **not** wait for the user to say “use skill X”.
+Do **not** wait for the user to say "use skill X".
 
 ## Always on (every turn)
 
@@ -12,7 +12,7 @@ Do **not** wait for the user to say “use skill X”.
 | Any coding task | `analyze-fix` method when bugs |
 | Multi-step / multi-file | `thinking-discipline` + `live-checklist` |
 | Any `edit_file` / `apply_patch` | `edit-file-discipline` (read first) |
-| Multi-file (>2) or “fix all” | `codewhale-plan-mode` |
+| Multi-file (>2) or "fix all" | `codewhale-plan-mode` |
 | Unclear project | `codewhale-alive-split` + workspace check |
 | About to push/commit | `alive-ship` or CodeWhale ship + `secrets-never-ship` |
 | PowerShell automation | `windows-shell-pitfalls` |
@@ -20,25 +20,37 @@ Do **not** wait for the user to say “use skill X”.
 | Better than Cursor/Claude/Codex? / am I #1? | `WIN-CONDITIONS.md` + `COMPETITIVE-SCORECARD.md` (honest) |
 | read-only / edit only / no push / ship lane | `permission-lanes` |
 
+## Symptom → skill (Docker / Containers) — NEW
+
+| User / log signal | Auto-apply |
+|-------------------|------------|
+| containerize, dockerfile, docker build, docker-compose, container | **`gordon-docker-expert`** |
+| docker build fails, image too big, healthcheck, registry push | **`gordon-docker-expert`** |
+| DHI migration, docker hardened images, container debugging | **`gordon-docker-expert`** |
+| multi-container setup, networking, volumes, services | **`gordon-docker-expert`** |
+
 ## Symptom → skill (ALIVE)
 
 | User / log signal | Auto-apply |
 |-------------------|------------|
 | health 500, Internal server error, Chroma, `_type`, InvalidCollection | `alive-backend-fix` |
-| rag_chunks 0, manuals not cited, “ingest”, “digest” | `alive-chroma-ingest` |
-| rename manuals, missing PDFs, backup drive, “40 manuals” | `alive-manuals-recovery` + `alive-pdf-pipeline` |
+| rag_chunks 0, manuals not cited, "ingest", "digest" | `alive-chroma-ingest` |
+| rename manuals, missing PDFs, backup drive, "40 manuals" | `alive-manuals-recovery` + `alive-pdf-pipeline` |
 | ZIM, kiwix, encyclopedia corrupt | `alive-kiwix-zim` |
 | photo, vision, mmproj, context 4096, deep analysis hang | `alive-vision-local` + `alive-smoke-deep` |
 | GPU, embedding device, torch CPU | `alive-gpu-embed` |
-| Launch ALIVE, ports, won’t start | `alive-launch-ops` |
+| Launch ALIVE, ports, won't start | `alive-launch-ops` |
 | Ship / GitHub / push ALIVE | `alive-ship` + `github-ci-noise` if CI emails |
 | Local unlimited tokens claim | `local-vs-cloud-copy` |
 | HF download, LoRA, GGUF merge | `hf-models-merge` |
 | USB product, phone offline sell | `alive-portable-usb` |
 | WIN11 recovery stick | `recovery-usb-win11` |
 | Update CodeWhale panel | `codewhale-update-ops` + `control-center-ops` |
-| Update stuck / blank / hang / wrong port / can’t see progress | `control-center-ops` → run `codewhale-update-diag.ps1` first |
-| “What should we finish” | `priority-focus` |
+| Update stuck / blank / hang / wrong port / can't see progress | `control-center-ops` → run `codewhale-update-diag.ps1` first |
+| Look at CodeWhale / help it along / finish Update | `codewhale-session-assist` → `codewhale-session-health.ps1` |
+| GitHub Actions / CI red / build.yml / IPA artifact / check main build | `github-actions-finish` → `codewhale-actions-prove.ps1 -DownloadLogs` (then fix + `-PollUntilDone`) |
+| Push refused: workflow scope | Tell user enable **workflow** on PAT; do not invent Mac F4 |
+| "What should we finish" | `priority-focus` |
 | API keys, .env | `secrets-never-ship` |
 
 ## CodeWhale product (agent itself)
@@ -46,11 +58,13 @@ Do **not** wait for the user to say “use skill X”.
 | Signal | Auto-apply |
 |--------|------------|
 | Update / binary / skills refresh | `codewhale-update-ops` |
+| Session health / what is CodeWhale doing | `codewhale-session-assist` |
+| Actions prove / CI green | `github-actions-finish` |
 | Competitive / Qwen / ChatGPT / Cursor | `competitive-edge` + `COMPETITIVE-UPDATE.md` |
 | Any shell on Windows | `windows-shell-pitfalls` |
 | `has not been read in this session` / `Search string not found` | `edit-file-discipline` |
 | `python: command not found` / bare python in WSL | `windows-shell-pitfalls` + `alive-backend-fix` |
-| Thinking loops / stalled checklist / “still reading” forever | `thinking-discipline` + `finish-job` after 2 retries |
+| Thinking loops / stalled checklist / "still reading" forever | `thinking-discipline` + `finish-job` after 2 retries |
 | Tools denied / approval gate | `approval-unblock` then fresh YOLO session |
 
 ## Optional later (do **not** start unless user asks or pain returns)
@@ -72,7 +86,7 @@ Track in `FUTURE-BACKLOG.md`.
 | Multi-file any stack | codewhale-plan-mode + thinking-discipline |
 | About to push any repo | ship scripts with `-Repo` + secrets-never-ship |
 | ALIVE-only symptoms | alive-* skills (only when workspace is ALIVE) |
-
+| Docker work on any repo | **`gordon-docker-expert`** (works on any project, not ALIVE-only) |
 
 ## Frontier parity (v4.0 — best always, model-agnostic)
 

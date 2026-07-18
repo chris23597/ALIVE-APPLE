@@ -1,6 +1,7 @@
 import Foundation
 
-/// Manages model lifecycle: load, unload, discover, validate
+/// Manages model lifecycle: load, unload, discover, validate.
+/// Delegates actual inference to InferenceEngine.
 actor ModelManager {
     
     // MARK: - Configuration
@@ -15,21 +16,31 @@ actor ModelManager {
     private var idleTimer: Task<Void, Never>?
     private var currentMemoryUsageGB: Float = 0
     
+    /// The inference engine that performs actual model loading/inference
+    private let engine: InferenceEngine
+    
+    // MARK: - Init
+    
+    init(engine: InferenceEngine) {
+        self.engine = engine
+    }
+    
     private var modelsDirectory: URL {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return documents.appendingPathComponent("Models", isDirectory: true)
     }
     
-    // MARK: - Model Loading
+    // MARK: - Model Loading (delegated to InferenceEngine)
     
-    /// Ensure a text model is loaded for the given tier
+    /// Ensure a text model is loaded for the given tier.
+    /// Delegates actual llama.cpp loading to InferenceEngine.
     func ensureTextModelLoaded(tier: RoutingTier) async throws -> ModelConfig {
         guard var config = tier.textModel else {
             throw ModelError.noModelForTier(tier)
         }
         
         // Already loaded? Return it
-        if loadedTextModel?.id == config.id {
+        if loadedTextModel?.id == config.id, await engine.isModelLoaded {
             return config
         }
         
@@ -53,11 +64,14 @@ actor ModelManager {
             unloadTextModel()
         }
         
-        // Load new model — track load time
+        // Delegate loading to InferenceEngine
         let startTime = Date()
+        try await engine.loadModel(config)
+        let elapsed = Date().timeIntervalSince(startTime)
+        
+        // Track state
         loadedTextModel = config
         currentMemoryUsageGB += neededGB
-        let elapsed = Date().timeIntervalSince(startTime)
         
         // Update config with measured load time
         config = ModelConfig(
@@ -81,13 +95,14 @@ actor ModelManager {
         return config
     }
     
-    /// Ensure a vision model is loaded for the given tier
+    /// Ensure a vision model is loaded for the given tier.
+    /// Delegates actual llama.cpp loading to InferenceEngine.
     func ensureVisionModelLoaded(tier: RoutingTier) async throws -> ModelConfig {
         guard var config = tier.visionModel else {
             throw ModelError.noVLMForTier(tier)
         }
         
-        if loadedVisionModel?.id == config.id {
+        if loadedVisionModel?.id == config.id, await engine.isModelLoaded {
             return config
         }
         
@@ -107,13 +122,14 @@ actor ModelManager {
             unloadVisionModel()
         }
         
-        // Load new model — track load time
+        // Delegate loading to InferenceEngine
         let startTime = Date()
-        loadedVisionModel = config
-        currentMemoryUsageGB += neededGB
+        try await engine.loadModel(config)
         let elapsed = Date().timeIntervalSince(startTime)
         
-        // Update config with measured load time
+        loadedVisionModel = config
+        currentMemoryUsageGB += neededGB
+        
         config = ModelConfig(
             id: config.id,
             name: config.name,
@@ -135,13 +151,17 @@ actor ModelManager {
         return config
     }
     
-    // MARK: - Model Unloading
+    // MARK: - Model Unloading (delegated to InferenceEngine)
     
     func unloadTextModel() {
         guard let model = loadedTextModel else { return }
         let freedGB = Float(model.fileSizeBytes) / 1e9
         currentMemoryUsageGB -= freedGB
         loadedTextModel = nil
+        // InferenceEngine handles its own state on next loadModel call
+        if loadedVisionModel == nil {
+            Task { await engine.unloadModel() }
+        }
         print("[ModelManager] Unloaded text model: \(model.name)")
     }
     
@@ -150,6 +170,9 @@ actor ModelManager {
         let freedGB = Float(model.fileSizeBytes) / 1e9
         currentMemoryUsageGB -= freedGB
         loadedVisionModel = nil
+        if loadedTextModel == nil {
+            Task { await engine.unloadModel() }
+        }
         print("[ModelManager] Unloaded vision model: \(model.name)")
     }
     
@@ -157,6 +180,7 @@ actor ModelManager {
         unloadTextModel()
         unloadVisionModel()
         idleTimer?.cancel()
+        Task { await engine.unloadModel() }
         print("[ModelManager] All models unloaded")
     }
     
@@ -174,7 +198,7 @@ actor ModelManager {
     
     // MARK: - Model Discovery
     
-    /// Scan for available models in the app sandbox
+    /// Scan for available model files in the app sandbox
     func discoverModels() -> [ModelConfig] {
         var discovered: [ModelConfig] = []
         

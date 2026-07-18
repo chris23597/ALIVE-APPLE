@@ -426,6 +426,18 @@ actor InferenceEngine {
         }
         return tokenizeForStream(response)
     }
+    
+    // MARK: - State Queries
+    
+    /// Whether a model is currently loaded and ready for inference
+    var isModelLoaded: Bool {
+        activeModel != nil && modelPath != nil
+    }
+    
+    /// The loaded model's effective context size (tokens), or 0 if no model loaded
+    var contextSize: Int {
+        activeModel?.contextSize ?? 0
+    }
 }
 
 // MARK: - Errors

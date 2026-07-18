@@ -37,6 +37,8 @@ On every user message about work:
 - Multi-hour / swarm / large MCP catalog / loses plot → **long-horizon-harness**.
 - Mythos / Fable / Kimi / top of the line / best stack → **agent-os** + **long-horizon-harness** + `BEST-STACK-NOW.md` (harness over brand).
 - Model refuse / rate limit / empty thrash → **agent-os** fallback chain.
+- Look at CodeWhale / help it along / stuck Update → **codewhale-session-assist**.
+- GitHub Actions / CI failed / IPA / check main build → **github-actions-finish** (not F4 unless user asks).
 
 ## Forbidden
 

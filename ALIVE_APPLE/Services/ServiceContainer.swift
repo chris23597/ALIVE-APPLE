@@ -9,7 +9,7 @@ import Observation
 @Observable
 final class ServiceContainer {
     let inferenceEngine = InferenceEngine()
-    let modelManager = ModelManager()
+    let modelManager: ModelManager
     let autoRouter = AutoRouter()
     let ragService = RAGService()
     let grokService = GrokAPIService()
@@ -17,6 +17,11 @@ final class ServiceContainer {
     let voiceService = VoiceService()
     let keychainManager = KeychainManager()
     let usbImportService = USBImportService()
+    
+    init() {
+        // ModelManager now requires an InferenceEngine to delegate loading to
+        modelManager = ModelManager(engine: inferenceEngine)
+    }
     
     /// Shared model-loading state (visible across all views)
     var loadedTextModel: ModelConfig?

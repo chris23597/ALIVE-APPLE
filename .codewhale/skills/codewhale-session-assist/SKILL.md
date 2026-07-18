@@ -62,6 +62,24 @@ powershell -File C:\Users\chris\CodeWhale\scripts\codewhale-update-diag.ps1
 | Stale READY stamp (>36h) | `codewhale-ready.ps1` or session-health `-Heal` |
 | Workspace = CodeWhale product root | Point `workspace-path.txt` at ALIVE_APPLE / ALIVE / workspace |
 
+## ALIVE APPLE / git finish tips (learned 2026-07-17)
+
+| Symptom | Fix |
+|---------|-----|
+| Push rejected: workflow `.github/workflows/*` | PAT needs **`workflow`** + `repo` (user must edit on github.com/settings/tokens) |
+| `git` error `cannot hash .agents/skills` / `Function not implemented` | WSL junction to `~/.codewhale/skills` — **never commit**. `rmdir` junction, `git rm --cached`, add `.agents/` to `.gitignore` |
+| Endless “fix last Sendable error” commits | Stop thrash: one clear compile log, one fix commit, push; do not re-open without new Xcode/CI error |
+| Update HEALTHY but product dirty | Finish **git** job separately: status → commit remaining → push → scrub token from `origin` URL |
+| User wants **GitHub Actions / CI / IPA** | Hand off to skill **`github-actions-finish`** + `scripts/codewhale-actions-prove.ps1` — do **not** invent F4/Mac product work |
+
+### Route table (pick the real job)
+
+| User intent | Skill / script |
+|-------------|----------------|
+| Look at CodeWhale / Update stuck | This skill + `codewhale-session-health.ps1` |
+| Actions red / check main build / IPA | **`github-actions-finish`** + `codewhale-actions-prove.ps1` |
+| Push blocked on workflow scope | User edits PAT; then push; scrub remote URL |
+
 ## Never
 
 - Claim “looks fine” without state + HTTP or session-health proof  
@@ -69,9 +87,11 @@ powershell -File C:\Users\chris\CodeWhale\scripts\codewhale-update-diag.ps1
 - Delete live `codewhale-update-state.json` mid-run  
 - Invent backlog outside finishing the live job  
 - Conflate ALIVE product updates with CodeWhale Update  
+- Commit WSL reparse points / agent home symlinks into product repos
 
 ## Pair with
 
+- **`github-actions-finish`** — CI diagnose → fix → push → poll green (ALIVE-APPLE IPA lane)  
 - `control-center-ops` — deep Update UI/engine surgery  
 - `codewhale-update-ops` — agent table (FunctionalReady final gate)  
 - `prove-before-done` — show commands + exit codes  

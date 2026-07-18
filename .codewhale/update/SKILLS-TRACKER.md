@@ -1,6 +1,6 @@
 # Skills tracker (keep in sync with `~/.codewhale/skills/`)
 
-**Last updated:** 2026-07-17 (long-horizon-harness from Kimi K3 scout)  
+**Last updated:** 2026-07-18 (added gordon-docker-expert integration)  
 **Auto-use:** Yes — see `AUTO-ROUTING.md` + skill `skill-auto-router`
 
 ## Status legend
@@ -46,6 +46,16 @@
 | tool-mastery | NOW | Tool decision matrix |
 | finish-job | NOW | Stop loops; handoff Grok |
 
+## Docker / Containers — NOW (NEW SECTION)
+
+| Skill | Status | Purpose |
+|-------|--------|---------|
+| **gordon-docker-expert** | **NOW** | Containerization, Dockerfile optimization, docker-compose, debugging (portable to any project) |
+
+**Auto-routes on:** containerize, dockerfile, docker build, docker-compose, container, healthcheck, image optimization, DHI migration
+
+**How:** User says `gordon: task` → CodeWhale invokes Gordon → results integrated
+
 ## ALIVE — NOW
 
 | Skill | Status | Purpose |
@@ -84,7 +94,7 @@
 |------|------|
 | Engine-level block: edit_file without prior read_file | If skill still ignored often |
 | Live agent labels in chat thinking header | UX pain returns |
-| Sticky “% complete” footer in TUI | Product change |
+| Sticky "% complete" footer in TUI | Product change |
 | CompassTool-native (macOS menu bar full native) | Pain returns / product priority |
 | Gmail OAuth flow (auto-read GitHub error mails) | Pain returns |
 | Fleet multi-PC agents | Pain returns |
@@ -92,5 +102,7 @@
 | alive-gpu-cuda-wheel install automation | If torch CPU keeps biting |
 | Retail USB factory flash CI | When Mini SKU ships |
 | BitLocker key capture automation | When encryption on |
+| GitHub Actions + Docker Hub push automation | When CI/CD pain returns |
+| Kubernetes support (k8s manifests, deployment) | When multi-node needed |
 
 See `FUTURE-BACKLOG.md` + `THINKING-PROCESS.md`.
