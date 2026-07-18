@@ -221,7 +221,7 @@ actor ModelManager {
 
 // MARK: - Errors
 
-enum ModelError: LocalizedError {
+enum ModelError: LocalizedError, Sendable {
     case noModelForTier(RoutingTier)
     case insufficientMemory(needed: Float, available: Float)
     case importFailed(String)

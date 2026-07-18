@@ -82,7 +82,7 @@ actor VisionService {
 
 // MARK: - Errors
 
-enum VisionError: LocalizedError {
+enum VisionError: LocalizedError, Sendable {
     case imageProcessingFailed
     case cameraNotAvailable
     case noVisionModel

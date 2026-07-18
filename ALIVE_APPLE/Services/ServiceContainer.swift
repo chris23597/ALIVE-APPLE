@@ -6,7 +6,7 @@ import Observation
 @Observable
 final class ServiceContainer {
     let inferenceEngine = InferenceEngine()
-    let modelManager = ModelManager(engine: InferenceEngine())
+    let modelManager = ModelManager(engine: inferenceEngine)
     let visionService = VisionService()
     let usbImportService = USBImportService()
     let memoryMonitor = MemoryMonitor()

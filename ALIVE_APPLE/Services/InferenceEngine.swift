@@ -283,7 +283,7 @@ actor InferenceEngine {
 
 // MARK: - Errors
 
-enum InferenceError: LocalizedError {
+enum InferenceError: LocalizedError, Sendable {
     case modelFileNotFound(String)
     case modelLoadFailed(String)
     case inferenceInProgress

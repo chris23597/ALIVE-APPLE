@@ -165,7 +165,7 @@ struct DiscoveredModel: Identifiable {
     var tierLabel: String { matchedConfig?.tier.label ?? "Unknown" }
 }
 
-enum USBImportError: LocalizedError {
+enum USBImportError: LocalizedError, Sendable {
     case unrecognizedModel(String)
     case invalidModel(String)
     case driveNotFound
