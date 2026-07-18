@@ -425,6 +425,7 @@ struct ErrorBanner: View {
     NavigationStack {
         ChatView()
             .environment(AppState())
+            .environment(ServiceContainer())
             .preferredColorScheme(.dark)
     }
 }

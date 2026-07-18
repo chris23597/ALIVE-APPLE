@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 /// App entry point — sets up SwiftData, global state, and shared services
 @main

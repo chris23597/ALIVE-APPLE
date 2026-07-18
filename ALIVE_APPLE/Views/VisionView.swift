@@ -388,7 +388,9 @@ struct VisionView: View {
                         throw DeepAnalysisError.timeout
                     }
                     
-                    let result = try await group.next()!
+                    guard let result = try await group.next() else {
+                        throw DeepAnalysisError.timeout
+                    }
                     group.cancelAll()
                     return result
                 }
@@ -450,6 +452,7 @@ enum DeepAnalysisError: LocalizedError {
     NavigationStack {
         VisionView()
             .environment(AppState())
+            .environment(ServiceContainer())
             .preferredColorScheme(.dark)
     }
 }

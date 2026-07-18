@@ -245,7 +245,7 @@ actor AutoRouter {
     func recordDecision(_ decision: RoutingDecision, inputs: RoutingInputs) {
         let record = RoutingRecord(
             timestamp: Date(),
-            promptHash: String(inputs.prompt.hashValue),
+            promptHash: String(inputs.prompt.hash),
             decidedTier: decision.tier,
             complexityScore: complexityScore(
                 prompt: inputs.prompt,
