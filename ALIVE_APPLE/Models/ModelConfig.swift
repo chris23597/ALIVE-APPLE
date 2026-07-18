@@ -13,6 +13,7 @@ struct ModelConfig: Identifiable, Codable, Hashable {
     let contextSize: Int
     let isLoaded: Bool
     let loadTimeSeconds: Double?
+    let mmprojFileName: String? = nil  // Multimodal projector file for vision models (nil for text-only)
     
     enum ModelType: String, Codable {
         case text          // Pure text LLM
@@ -82,7 +83,8 @@ struct ModelConfig: Identifiable, Codable, Hashable {
         tier: .fast,
         contextSize: 4096,
         isLoaded: false,
-        loadTimeSeconds: nil
+        loadTimeSeconds: nil,
+        mmprojFileName: "mmproj-SmolVLM2-2.2B-Instruct-f16.gguf"
     )
     
     static let qwen25VL_7b = ModelConfig(
@@ -96,7 +98,8 @@ struct ModelConfig: Identifiable, Codable, Hashable {
         tier: .moderate,
         contextSize: 8192,
         isLoaded: false,
-        loadTimeSeconds: nil
+        loadTimeSeconds: nil,
+        mmprojFileName: "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf"
     )
     
     static let allModels: [ModelConfig] = [phi4Mini, qwen25_7b, smolVLM2, qwen25VL_7b]
