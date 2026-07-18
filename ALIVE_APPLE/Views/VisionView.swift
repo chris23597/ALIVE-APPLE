@@ -328,7 +328,7 @@ struct VisionView: View {
         Task {
             do {
                 let engine = InferenceEngine()
-                let manager = ModelManager()
+                let manager = ModelManager(engine: engine)
                 
                 // Fast tier is always available — this is the smoke path
                 let result = try await visionService.analyze(
@@ -367,7 +367,7 @@ struct VisionView: View {
         Task {
             do {
                 let engine = InferenceEngine()
-                let manager = ModelManager()
+                let manager = ModelManager(engine: engine)
                 
                 // Try moderate tier; fall back to fast if unavailable
                 let tier: RoutingTier = appState.availableModels.contains(where: { $0.tier == .moderate && $0.modelType == .vision })
