@@ -35,6 +35,8 @@ targets:
     sources:
       - path: ALIVE_APPLE
         type: group
+        excludes:
+          - "Tests"
       - path: Xcode
         type: group
         includes:
