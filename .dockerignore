@@ -1,0 +1,9 @@
+.git
+.agents
+.codewhale
+**/.agents
+**/.codewhale
+**/node_modules
+**/.build
+*.ipa
+Docs
