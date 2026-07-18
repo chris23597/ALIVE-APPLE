@@ -5,17 +5,28 @@ import Observation
 @MainActor
 @Observable
 final class ServiceContainer {
-    let inferenceEngine = InferenceEngine()
-    let modelManager = ModelManager(engine: inferenceEngine)
-    let visionService = VisionService()
-    let usbImportService = USBImportService()
-    let memoryMonitor = MemoryMonitor()
-    let thermalMonitor = ThermalMonitor()
+    let inferenceEngine: InferenceEngine
+    let modelManager: ModelManager
+    let visionService: VisionService
+    let usbImportService: USBImportService
+    let memoryMonitor: MemoryMonitor
+    let thermalMonitor: ThermalMonitor
     
     /// Shared model state
     var loadedModel: ModelConfig?
     var isModelLoaded: Bool { loadedModel != nil }
     var isLoading: Bool = false
+
+    init() {
+        // Property initializers cannot reference other instance members (CI Xcode 26).
+        let engine = InferenceEngine()
+        self.inferenceEngine = engine
+        self.modelManager = ModelManager(engine: engine)
+        self.visionService = VisionService()
+        self.usbImportService = USBImportService()
+        self.memoryMonitor = MemoryMonitor()
+        self.thermalMonitor = ThermalMonitor()
+    }
     
     /// Load the Fast tier text model (Phi-4 Mini).
     func ensureTextModelLoaded() async throws -> ModelConfig {
