@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Simplified v1 routing — single Fast tier only (on-device).
 /// Kept as enum for forward-compatibility with v2 tiers.
-enum RoutingTier: String, CaseIterable, Codable {
+enum RoutingTier: String, CaseIterable, Codable, Sendable {
     case fast = "Fast"
     case none = "None"
     
