@@ -60,7 +60,7 @@ struct ContentView: View {
             }
             .tag(AppState.Tab.settings)
         }
-        .tint(appState.activeTier.color)
+        .tint(RoutingTier.fast.color)
         .overlay(alignment: .top) {
             // Toast overlays
             if let error = appState.errorToast {

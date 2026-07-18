@@ -183,20 +183,18 @@ struct OnboardingView: View {
                 )
                 InfoRow(
                     icon: "2.circle.fill",
-                    text: "Downloads 4 models (~13 GB total) to USB drive"
+                    text: "Downloads 2 models (~3.6 GB total) to USB drive"
                 )
                 InfoRow(
                     icon: "3.circle.fill",
-                    text: "Models include: Phi-4 Mini, Qwen2.5 7B, SmolVLM2, Qwen2.5-VL"
+                    text: "Models include: Phi-4 Mini 3.8B (text) + SmolVLM2 2.2B (vision)"
                 )
             }
             .padding(.horizontal, 16)
             
             VStack(spacing: 8) {
                 ModelBadge(name: "Phi-4 Mini 3.8B", tier: .fast, size: "2.4 GB")
-                ModelBadge(name: "Qwen2.5 7B", tier: .moderate, size: "4.4 GB")
-                ModelBadge(name: "SmolVLM2 2.2B", tier: .fast, size: "1.4 GB")
-                ModelBadge(name: "Qwen2.5-VL 7B", tier: .moderate, size: "4.7 GB")
+                ModelBadge(name: "SmolVLM2 2.2B", tier: .fast, size: "1.2 GB")
             }
             .padding(.horizontal, 8)
             
