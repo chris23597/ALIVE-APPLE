@@ -2,8 +2,8 @@ name: ALIVE APPLE
 options:
   bundleIdPrefix: com.aliveapple
   deploymentTarget:
-    # Lowered for lesser/older iPhones installable via Sideloadly (still needs device iOS ≥ 16)
-    iOS: "16.0"
+    # App uses @Observable + SwiftData — requires iOS 17+. Install via Sideloadly on Windows.
+    iOS: "17.0"
   xcodeVersion: "17.0"
   generateEmptyDirectories: true
   developmentLanguage: en

@@ -7,7 +7,7 @@
 | IPA (unsigned CI) | Desktop `ALIVE_APPLE.ipa` + `exports/ALIVE_APPLE.ipa` |
 | Sideloadly | Installed (`%LOCALAPPDATA%\Sideloadly\sideloadly.exe`) |
 | Apple Mobile Device Support | Installed + service Running |
-| Deployment target | **iOS 16.0+** (after commit `427cf01`; wait for new Actions IPA) |
+| Deployment target | **iOS 17.0+** (Swift Observation + SwiftData — hard requirement) |
 
 ## Why Sideloadly (not Xcode)
 
@@ -49,4 +49,4 @@ Then open Sideloadly on the refreshed Desktop IPA.
 
 - Free Apple ID: app expires ~7 days without re-sign.  
 - Paid Developer account ($99/yr): longer install + TestFlight path (still easier on Mac).  
-- If phone is **below iOS 16**, installation will fail until OS upgrade or we lower target further.
+- Phone must be **iOS 17 or newer** (Settings → General → About). Older OS cannot run this app.
