@@ -1,13 +1,16 @@
 # ALIVE APPLE — ship status (2026-07-19)
 
+**Software wrap: COMPLETE** (CodeWhale `project-green` GREEN · Git+Actions+Docker).
+
 ## Green lanes
 
 | Lane | Status | Proof |
 |------|--------|--------|
-| **GitHub Actions** | GREEN | Latest `main` run success; artifact `ALIVE_APPLE_iPhone16` |
+| **GitHub Actions** | GREEN | Latest `main` success; artifact `ALIVE_APPLE_iPhone16` |
 | **Git write** | WRITE_READY | `codewhale-git-prove.ps1` — clean tree, repo+workflow scopes |
-| **Docker (ref image)** | GREEN | `docker build -t codewhale-alive-apple:local -f Dockerfile .` |
+| **Docker (ref image)** | GREEN | `codewhale-docker-green.ps1 -Build` / `codewhale-alive-apple:local` |
 | **ALIVE web stack** (sibling) | GREEN | `http://127.0.0.1:8000/api/health` ok; frontend :5173 200 |
+| **One-shot prove** | GREEN | `codewhale-project-green.ps1 -Repo . -PollCi -DockerBuild` |
 
 ## Delivered on main
 
