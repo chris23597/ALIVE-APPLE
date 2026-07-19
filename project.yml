@@ -2,7 +2,8 @@ name: ALIVE APPLE
 options:
   bundleIdPrefix: com.aliveapple
   deploymentTarget:
-    iOS: "18.0"
+    # Lowered for lesser/older iPhones installable via Sideloadly (still needs device iOS ≥ 16)
+    iOS: "16.0"
   xcodeVersion: "17.0"
   generateEmptyDirectories: true
   developmentLanguage: en
